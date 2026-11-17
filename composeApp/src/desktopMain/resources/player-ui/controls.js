@@ -2604,7 +2604,6 @@ const isInteractingWithChrome = () =>
   Boolean(isChromePointerInside || isChromePointerDown || isChromeFocusInside);
 
 const canAutoHideChrome = showOpening => Boolean(
-  !state.trailerMode &&
   state.controlsVisible &&
   !state.isLoading &&
   !activeModal &&
@@ -2740,7 +2739,7 @@ const renderChrome = () => {
   root.classList.toggle("pip-mode", Boolean(state.isInPip));
   if (!state.isInPip && isPipLocked) setPipLocked(false);
   root.classList.toggle("trailer-mode", Boolean(state.trailerMode));
-  root.classList.toggle("chrome-hidden", Boolean(showError || (!state.trailerMode && !state.controlsVisible)));
+  root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
   root.classList.toggle("modal-open", Boolean(activeModal));
   root.classList.toggle("info-open", activeModal === "streamInfo");
   root.classList.toggle("source-visible", Boolean(!showError && !isPlaying && !state.isLoading && (state.streamTitle || state.providerName)));
@@ -3121,9 +3120,12 @@ document.addEventListener("pointerdown", event => {
 }, true);
 
 window.revealTrailerControls = () => {
-  if (!state.trailerMode || (state.controlsVisible && !root.classList.contains("chrome-hidden"))) return;
-  state = { ...state, controlsVisible: true };
-  renderChrome();
+  if (!state.trailerMode || playbackErrorText()) return;
+  if (!state.controlsVisible) {
+    state = { ...state, controlsVisible: true };
+    renderChrome();
+  }
+  noteChromeActivity();
 };
 
 document.addEventListener("pointermove", event => {
