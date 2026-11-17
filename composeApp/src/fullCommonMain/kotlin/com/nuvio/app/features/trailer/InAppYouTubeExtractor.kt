@@ -1,6 +1,9 @@
 package com.nuvio.app.features.trailer
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -198,18 +201,23 @@ class InAppYouTubeExtractor {
         val adaptiveAudio = mutableListOf<StreamCandidate>()
         val manifestUrls = mutableListOf<Triple<String, Int, String>>()
 
-        for (client in CLIENTS) {
+        val responses = coroutineScope {
+            CLIENTS.map { client ->
+                async {
+                    client to runCatching {
+                        fetchPlayerResponse(apiKey, videoId, client, watchConfig.visitorData)
+                    }.onFailure { if (it is CancellationException) throw it }
+                }
+            }.map { it.await() }
+        }
+
+        for ((client, response) in responses) {
             runCatching {
                 val progressiveStart = progressive.size
                 val videoStart = adaptiveVideo.size
                 val audioStart = adaptiveAudio.size
                 val manifestStart = manifestUrls.size
-                val playerResponse = fetchPlayerResponse(
-                    apiKey = apiKey,
-                    videoId = videoId,
-                    client = client,
-                    visitorData = watchConfig.visitorData,
-                )
+                val playerResponse = response.getOrThrow()
 
                 val streamingData = playerResponse.objectValue("streamingData")
                     ?: throw IllegalStateException("missing streamingData")
@@ -309,6 +317,7 @@ class InAppYouTubeExtractor {
                         "hls=${manifestUrls.size - manifestStart}",
                 )
             }.onFailure {
+                if (it is CancellationException) throw it
                 TrailerExtractionPlatform.diagnostic(
                     "blocked stage=client client=${client.key} error=${it::class.simpleName} " +
                         "message=${it.message.orEmpty()}",

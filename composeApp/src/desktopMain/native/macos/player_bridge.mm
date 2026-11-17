@@ -946,6 +946,9 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     std::atomic<double> _requestedVolumePercent;
     BOOL _didFocusControlsWebView;
     BOOL _controlsWebReady;
+    BOOL _trailerControlsActive;
+    id _trailerMouseMonitor;
+    NSTimeInterval _lastTrailerMouseReveal;
     BOOL _fullscreenTransitionActive;
     NSString *_pendingControlsJson;
     double _initialStartSeconds;
@@ -1073,6 +1076,20 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
             return event;
         }
         return [strongSelf handleMediaKeyEvent:event];
+    }];
+    _trailerMouseMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskMouseMoved
+                                                               handler:^NSEvent *(NSEvent *event) {
+        MpvWebPlayer *player = weakSelf;
+        if (!player || !player->_trailerControlsActive || !player->_controlsWebReady ||
+            event.window != player->_webView.window) {
+            return event;
+        }
+        NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+        if (now - player->_lastTrailerMouseReveal >= 0.12) {
+            player->_lastTrailerMouseReveal = now;
+            [player->_webView evaluateJavaScript:@"window.revealTrailerControls?.()" completionHandler:nil];
+        }
+        return event;
     }];
     [self activateRemoteCommands];
     [self layoutNativeSubviews];
@@ -1888,6 +1905,9 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     if (!controlsJson) {
         return;
     }
+    NSDictionary *controls = [NSJSONSerialization JSONObjectWithData:[controlsJson dataUsingEncoding:NSUTF8StringEncoding]
+                                                               options:0 error:nullptr];
+    _trailerControlsActive = [controls[@"trailerMode"] boolValue];
     _pendingControlsJson = [controlsJson copy];
     [self flushPendingControlsJsonIfReady];
 }
@@ -1920,6 +1940,10 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 }
 
 - (void)shutdown {
+    if (_trailerMouseMonitor) {
+        [NSEvent removeMonitor:_trailerMouseMonitor];
+        _trailerMouseMonitor = nil;
+    }
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_timer invalidate];
     _timer = nil;

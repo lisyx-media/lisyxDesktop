@@ -1,6 +1,7 @@
 package com.nuvio.app.features.trailer
 
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -8,10 +9,16 @@ import kotlin.time.TimeSource
 actual object TrailerPlaybackResolver {
     private val extractor by lazy { InAppYouTubeExtractor() }
     private val cacheMutex = Mutex()
+    private val extractionLocks = List(8) { Mutex() }
     private var playbackCache = emptyMap<String, CachedPlaybackSource>()
 
     actual suspend fun resolveFromYouTubeUrl(youtubeUrl: String): TrailerPlaybackSource? {
         if (youtubeUrl.isBlank()) return null
+        val lock = extractionLocks[(youtubeUrl.hashCode() and Int.MAX_VALUE) % extractionLocks.size]
+        return lock.withLock { resolveCached(youtubeUrl) }
+    }
+
+    private suspend fun resolveCached(youtubeUrl: String): TrailerPlaybackSource? {
         cacheMutex.lock()
         try {
             playbackCache = playbackCache.filterValues { entry ->

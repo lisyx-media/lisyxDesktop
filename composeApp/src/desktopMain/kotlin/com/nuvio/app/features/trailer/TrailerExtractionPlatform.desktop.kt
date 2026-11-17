@@ -1,6 +1,8 @@
 package com.nuvio.app.features.trailer
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -98,10 +100,14 @@ internal object TrailerExtractionPlatform {
         bestVideo: StreamCandidate?,
         bestAudio: StreamCandidate?,
     ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
-        val progressiveUrl = bestProgressive?.url?.let { resolveReachableUrlOrNull(it) }
+        val (progressiveUrl, video, audio) = coroutineScope {
+            val progressive = async { bestProgressive?.url?.let { resolveReachableUrlOrNull(it) } }
+            val hdVideo = bestVideo?.takeIf { it.height >= 720 && bestAudio != null }
+            val video = async { hdVideo?.url?.let { resolveReachableUrlOrNull(it) } }
+            val audio = async { if (hdVideo != null) bestAudio?.url?.let { resolveReachableUrlOrNull(it) } else null }
+            Triple(progressive.await(), video.await(), audio.await())
+        }
         if (bestVideo != null && bestVideo.height >= 720 && bestAudio != null) {
-            val video = resolveReachableUrlOrNull(bestVideo.url)
-            val audio = video?.let { resolveReachableUrlOrNull(bestAudio.url) }
             if (video != null && audio != null && video.startsWith("https://") && audio.startsWith("https://")) {
                 // mpv can load two synchronized tracks as one source using its EDL format.
                 val source = "edl://%${video.encodeToByteArray().size}%$video;!new_stream;%${audio.encodeToByteArray().size}%$audio"

@@ -3120,8 +3120,15 @@ document.addEventListener("pointerdown", event => {
   button.classList.add("is-pressed");
 }, true);
 
+window.revealTrailerControls = () => {
+  if (!state.trailerMode || (state.controlsVisible && !root.classList.contains("chrome-hidden"))) return;
+  state = { ...state, controlsVisible: true };
+  renderChrome();
+};
+
 document.addEventListener("pointermove", event => {
   noteCursorActivity();
+  window.revealTrailerControls();
   const inside = isChromeInteractionTarget(event.target);
   updateChromePointerInside(inside);
   if (inside) {

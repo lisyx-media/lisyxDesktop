@@ -776,6 +776,19 @@ fun MetaDetailsScreen(
                 val heroTrailerCandidate = remember(meta.trailers) {
                     selectHeroTrailer(meta.trailers)
                 }
+                LaunchedEffect(isDesktop, inAppTrailerPlaybackEnabled, deferredMetaWorkAllowed, heroTrailerCandidate?.key) {
+                    val candidate = heroTrailerCandidate
+                    if (!isDesktop || !inAppTrailerPlaybackEnabled || !deferredMetaWorkAllowed || candidate == null) {
+                        return@LaunchedEffect
+                    }
+                    withTimeoutOrNull(12_000) {
+                        try {
+                            TrailerPlaybackResolver.resolveFromYouTubeUrl(candidate.youtubePlaybackUrl())
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                        }
+                    }
+                }
                 val heroTrailerPlaybackEnabled = AppFeaturePolicy.heroTrailerPlaybackSupported &&
                     inAppTrailerPlaybackEnabled &&
                     metaScreenSettingsUiState.heroTrailerPlayback
