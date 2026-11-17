@@ -281,7 +281,7 @@ private fun TrailerSmokePlayer(url: String, close: () -> Unit) {
     }
     LaunchedEffect(state) {
         snapshotFlow { state.snapshot.positionMs > 2_000 }.collect { playing ->
-            if (playing) println("Trailer smoke: playback reached ${state.snapshot.positionMs} ms")
+            if (playing) println("Trailer smoke: playback reached ${state.snapshot.positionMs} ms at ${state.snapshot.videoWidth}×${state.snapshot.videoHeight}")
         }
     }
     LaunchedEffect(state.error) {

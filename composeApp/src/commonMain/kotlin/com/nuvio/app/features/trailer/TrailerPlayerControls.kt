@@ -13,6 +13,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Path
 import nuvio.composeapp.generated.resources.lisyx_trailer_open_youtube
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.height
+import com.nuvio.app.isDesktop
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -54,6 +56,7 @@ import com.nuvio.app.features.player.PlayerSeekBar
 import kotlinx.coroutines.delay
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.trailer_exit_fullscreen
+import nuvio.composeapp.generated.resources.trailer_close
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -64,6 +67,54 @@ internal fun TrailerPlayerControls(
     onExitFullscreen: (() -> Unit)?,
     onOpenInBrowser: (() -> Unit)? = null,
 ) {
+    if (isDesktop) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val metrics = PlayerLayoutMetrics.fromWidth(maxWidth)
+            Row(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth().height(64.dp)
+                    .background(Color.Black).padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(title, Modifier.weight(1f), color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (onExitFullscreen != null) {
+                    PlayerHeaderIconButton(
+                        icon = Icons.Rounded.FullscreenExit,
+                        contentDescription = stringResource(Res.string.trailer_close),
+                        buttonSize = 44.dp,
+                        iconSize = 22.dp,
+                        onClick = onExitFullscreen,
+                    )
+                }
+            }
+            Row(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(88.dp)
+                    .background(Color.Black).padding(horizontal = 16.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (canControlPlayback) {
+                    PlayPauseControlButton(
+                        isPlaying = state.snapshot.isPlaying,
+                        isBuffering = state.snapshot.isLoading,
+                        metrics = metrics,
+                        onClick = state::togglePlayback,
+                    )
+                    PlayerSeekBar(
+                        durationMs = state.snapshot.durationMs,
+                        displayedPositionMs = state.scrubPositionMs ?: state.snapshot.positionMs,
+                        metrics = metrics,
+                        onScrubChange = { state.scrubPositionMs = it },
+                        onScrubFinished = { state.seekTo(state.scrubPositionMs ?: it) },
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                if (onOpenInBrowser != null) TrailerYouTubeButton(onOpenInBrowser)
+            }
+        }
+        return
+    }
     var controlsVisible by remember { mutableStateOf(true) }
     val isScrubbing = state.scrubPositionMs != null
     val fullscreen = onExitFullscreen != null

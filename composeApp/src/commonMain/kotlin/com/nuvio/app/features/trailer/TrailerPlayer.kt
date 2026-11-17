@@ -22,14 +22,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.NuvioLoadingIndicator
+import com.nuvio.app.isDesktop
+import androidx.compose.runtime.key
 import com.nuvio.app.features.player.EnterImmersivePlayerMode
 import com.nuvio.app.features.player.PlatformPlayerSurface
+import com.nuvio.app.features.player.PlayerControlsState
 import com.nuvio.app.features.player.PlayerControlsAction
 import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerPlaybackSnapshot
 import com.nuvio.app.features.player.PlayerResizeMode
+import kotlinx.coroutines.delay
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_retry
+import nuvio.composeapp.generated.resources.lisyx_trailer_open_youtube
+import nuvio.composeapp.generated.resources.trailer_close
 import nuvio.composeapp.generated.resources.trailer_unable_to_play
 import org.jetbrains.compose.resources.stringResource
 
@@ -48,18 +54,44 @@ internal fun TrailerPlayer(
     onEscapeFullscreen: (() -> Unit)? = null,
     onOpenInBrowser: (() -> Unit)? = null,
 ) {
+    var usingFallback by remember(source) { mutableStateOf(false) }
     val error = errorMessage ?: state.error
+    val videoSource = if (usingFallback) {
+        source?.fallbackVideoUrl?.let { TrailerPlaybackSource(it) }
+    } else source
+    LaunchedEffect(source, isLoading, usingFallback) {
+        if (!isLoading && !usingFallback && source?.fallbackVideoUrl != null) {
+            delay(10_000)
+            if (state.snapshot.isLoading && state.snapshot.positionMs == 0L) {
+                state.changePresentation()
+                usingFallback = true
+            }
+        }
+    }
     EnterImmersivePlayerMode(keepScreenAwake = error == null && state.playWhenReady && !state.snapshot.isEnded)
+    val desktopNativeControls = isDesktop && source != null && !isLoading && error == null
     Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
         if (source != null && !isLoading && error == null) {
-            TrailerPlaybackSurface(
-                source = source,
-                state = state,
-                resizeMode = PlayerResizeMode.Fit,
-                onBack = onBack,
-                onToggleFullscreen = onToggleFullscreen,
-                onEscapeFullscreen = onEscapeFullscreen,
-            )
+            key(videoSource?.videoUrl) {
+                TrailerPlaybackSurface(
+                    source = checkNotNull(videoSource),
+                    state = state,
+                    resizeMode = PlayerResizeMode.Fit,
+                    onBack = onBack,
+                    onToggleFullscreen = onToggleFullscreen,
+                    onEscapeFullscreen = onEscapeFullscreen,
+                    title = title,
+                    onOpenInBrowser = onOpenInBrowser,
+                    onFailure = { message ->
+                        if (!usingFallback && source.fallbackVideoUrl != null && state.snapshot.positionMs < 1_000) {
+                            state.changePresentation()
+                            usingFallback = true
+                        } else {
+                            state.error = message
+                        }
+                    },
+                )
+            }
         }
         when {
             error == null && (isLoading || source != null && state.snapshot.isLoading) -> {
@@ -87,7 +119,7 @@ internal fun TrailerPlayer(
                 }
             }
         }
-        TrailerPlayerControls(
+        if (!desktopNativeControls) TrailerPlayerControls(
             state = state,
             canControlPlayback = source != null && !isLoading && error == null,
             title = title,
@@ -105,6 +137,9 @@ private fun TrailerPlaybackSurface(
     onBack: (() -> Unit)?,
     onToggleFullscreen: (() -> Unit)?,
     onEscapeFullscreen: (() -> Unit)?,
+    title: String,
+    onOpenInBrowser: (() -> Unit)?,
+    onFailure: (String?) -> Unit,
 ) {
     val presentationId = remember { state.presentationId }
     val resumePositionMs = remember { state.snapshot.positionMs }
@@ -134,9 +169,22 @@ private fun TrailerPlaybackSurface(
         playWhenReady = state.playWhenReady && !restoringPosition && !state.snapshot.isEnded &&
             presentationId == state.presentationId,
         resizeMode = resizeMode,
-        useNativeController = false,
+        useNativeController = isDesktop,
+        playerControlsState = if (isDesktop) PlayerControlsState(
+            title = title,
+            trailerMode = true,
+            pauseOverlayEnabled = false,
+            closeLabel = stringResource(Res.string.trailer_close),
+            showExternalPlayer = onOpenInBrowser != null,
+            externalPlayerLabel = stringResource(Res.string.lisyx_trailer_open_youtube),
+        ) else PlayerControlsState(),
         onPlayerControlsAction = { action ->
-            action == PlayerControlsAction.Back && onBack.invokeIfPresent()
+            when (action) {
+                PlayerControlsAction.Back -> onBack.invokeIfPresent()
+                PlayerControlsAction.OpenExternalPlayer -> onOpenInBrowser.invokeIfPresent()
+                PlayerControlsAction.ToggleChrome -> isDesktop
+                else -> false
+            }
         },
         onPlayerControlsEvent = { type, value ->
             type == "toggleFullscreen" &&
@@ -150,7 +198,7 @@ private fun TrailerPlaybackSurface(
             snapshot = it
             if (!restoringPosition && presentationId == state.presentationId) state.snapshot = it
         },
-        onError = { if (presentationId == state.presentationId) state.error = it },
+        onError = { if (it != null && presentationId == state.presentationId) onFailure(it) },
     )
     if (restoringPosition) {
         Box(Modifier.fillMaxSize().background(Color.Black))

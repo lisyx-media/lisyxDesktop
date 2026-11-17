@@ -41,6 +41,13 @@ import com.nuvio.app.features.trailer.TrailerPlaybackState
 import com.nuvio.app.features.trailer.TrailerPlayer
 import com.nuvio.app.features.trailer.TrailerPlaybackSource
 import com.nuvio.app.isIos
+import com.nuvio.app.isDesktop
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
+import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -95,6 +102,34 @@ fun TrailerPlayerPopup(
             controller.pause()
             controller.releaseBeforeNavigation(onReleased = finish, onReleaseFailed = { finish() })
         }
+    }
+
+    if (isDesktop) {
+        val close: () -> Unit = { releasePlayerThen { onDismiss() } }
+        val focus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { focus.requestFocus() }
+        TrailerPlayer(
+            source = playbackSource,
+            state = playbackState,
+            isLoading = isLoading,
+            errorMessage = errorMessage,
+            onRetry = onRetry,
+            onOpenInBrowser = onOpenInBrowser,
+            modifier = Modifier.fillMaxSize().zIndex(1f)
+                .focusRequester(focus)
+                .onPreviewKeyEvent {
+                    if (it.key == Key.Escape && it.type == KeyEventType.KeyUp) {
+                        close()
+                        true
+                    } else false
+                }
+                .focusable(),
+            title = headerSubtitle.ifBlank { headerType },
+            onExitFullscreen = close,
+            onBack = close,
+            onEscapeFullscreen = close,
+        )
+        return
     }
 
     val appFullscreen = isFullscreenActionActive()

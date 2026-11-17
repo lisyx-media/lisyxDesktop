@@ -1567,6 +1567,7 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         appendJsonField("isInPip", DesktopPlayerPictureInPicture.isEnabled)
         append(',')
         appendJsonField("controlsVisible", controlsVisible)
+        appendJsonField("trailerMode", trailerMode)
         append(',')
         appendJsonArrayField("parentalWarnings", parentalWarnings) { appendParentalWarningJson(it) }
         append(',')

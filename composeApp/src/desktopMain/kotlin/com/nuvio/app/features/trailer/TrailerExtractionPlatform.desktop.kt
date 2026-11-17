@@ -42,9 +42,9 @@ internal object TrailerExtractionPlatform {
         .followSslRedirects(true)
         .build()
 
-    fun supportsSeparateVideo(candidate: StreamCandidate): Boolean = false
+    fun supportsSeparateVideo(candidate: StreamCandidate): Boolean = candidate.ext == "mp4"
 
-    fun supportsSeparateAudio(candidate: StreamCandidate): Boolean = false
+    fun supportsSeparateAudio(candidate: StreamCandidate): Boolean = candidate.ext == "m4a"
 
     fun diagnostic(message: String) {
         if (diagnosticsEnabled) {
@@ -98,18 +98,25 @@ internal object TrailerExtractionPlatform {
         bestVideo: StreamCandidate?,
         bestAudio: StreamCandidate?,
     ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
-        // A progressive file includes audio and video in one verified response.
-        // A successful HLS manifest probe alone does not check its media segments.
-        bestProgressive?.url?.let { resolveReachableUrlOrNull(it) }?.let { url ->
-            diagnostic("selected progressive ${describeUrl(url)}")
-            return@withContext TrailerPlaybackSource(videoUrl = url)
+        val progressiveUrl = bestProgressive?.url?.let { resolveReachableUrlOrNull(it) }
+        if (bestVideo != null && bestVideo.height >= 720 && bestAudio != null) {
+            val video = resolveReachableUrlOrNull(bestVideo.url)
+            val audio = video?.let { resolveReachableUrlOrNull(bestAudio.url) }
+            if (video != null && audio != null && video.startsWith("https://") && audio.startsWith("https://")) {
+                // mpv can load two synchronized tracks as one source using its EDL format.
+                val source = "edl://%${video.encodeToByteArray().size}%$video;!new_stream;%${audio.encodeToByteArray().size}%$audio"
+                diagnostic("selected adaptive height=${bestVideo.height}")
+                return@withContext TrailerPlaybackSource(videoUrl = source, fallbackVideoUrl = progressiveUrl)
+            }
         }
-
-        // The native desktop player takes a single audio/video source URL.
         val manifestUrl = bestManifest?.manifestUrl?.let { resolveReachableUrlOrNull(it) }
-        if (manifestUrl != null) {
-            diagnostic("selected HLS ${describeUrl(manifestUrl)}")
-            return@withContext TrailerPlaybackSource(videoUrl = manifestUrl)
+        if (manifestUrl != null && (progressiveUrl == null || bestManifest.height > (bestProgressive?.height ?: 0))) {
+            diagnostic("selected HLS height=${bestManifest.height}")
+            return@withContext TrailerPlaybackSource(videoUrl = manifestUrl, fallbackVideoUrl = progressiveUrl)
+        }
+        if (progressiveUrl != null) {
+            diagnostic("selected progressive height=${bestProgressive?.height}")
+            return@withContext TrailerPlaybackSource(videoUrl = progressiveUrl, fallbackVideoUrl = manifestUrl)
         }
         diagnostic("blocked stage=source reason=no_reachable_av")
         null

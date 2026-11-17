@@ -3761,3 +3761,11 @@ svg {
   align-items: center;
   gap: 6px;
 }
+
+
+.trailer-mode .action-pill [data-command="resize"],
+.trailer-mode .action-pill [data-command="subtitles"],
+.trailer-mode .action-pill [data-command="audio"],
+.trailer-mode .action-pill [data-command="streamInfo"] {
+  display: none;
+}

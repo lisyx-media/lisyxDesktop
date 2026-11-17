@@ -2604,6 +2604,7 @@ const isInteractingWithChrome = () =>
   Boolean(isChromePointerInside || isChromePointerDown || isChromeFocusInside);
 
 const canAutoHideChrome = showOpening => Boolean(
+  !state.trailerMode &&
   state.controlsVisible &&
   !state.isLoading &&
   !activeModal &&
@@ -2738,7 +2739,8 @@ const renderChrome = () => {
   const showError = renderPlaybackError();
   root.classList.toggle("pip-mode", Boolean(state.isInPip));
   if (!state.isInPip && isPipLocked) setPipLocked(false);
-  root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
+  root.classList.toggle("trailer-mode", Boolean(state.trailerMode));
+  root.classList.toggle("chrome-hidden", Boolean(showError || (!state.trailerMode && !state.controlsVisible)));
   root.classList.toggle("modal-open", Boolean(activeModal));
   root.classList.toggle("info-open", activeModal === "streamInfo");
   root.classList.toggle("source-visible", Boolean(!showError && !isPlaying && !state.isLoading && (state.streamTitle || state.providerName)));
@@ -2780,6 +2782,8 @@ const renderChrome = () => {
   setVisible(videoSettingsButton, Boolean(state.showVideoSettings));
   setVisible(sourcesButton, Boolean(state.showSources));
   setVisible(episodesButton, Boolean(state.showEpisodes));
+  setVisible(document.getElementById("trailerYoutubeButton"), Boolean(state.trailerMode && state.showExternalPlayer));
+  document.getElementById("trailerYoutubeLabel").textContent = state.externalPlayerLabel || "YouTube";
   const hasChapters = Array.isArray(state.chapters) && state.chapters.length > 0;
   setVisible(chaptersButton, hasChapters);
   chaptersLabel.textContent = state.chaptersLabel || "Chapters";
@@ -3049,7 +3053,7 @@ const sendKeyboardVolume = delta => {
 };
 
 const setChromeVisibleFromKeyboard = (visible, { focusAction = false } = {}) => {
-  if (playbackErrorText()) return false;
+  if (state.trailerMode || playbackErrorText()) return false;
   const nextVisible = Boolean(visible);
   if (state.controlsVisible !== nextVisible) {
     state = { ...state, controlsVisible: nextVisible };
@@ -3069,7 +3073,7 @@ const setChromeVisibleFromKeyboard = (visible, { focusAction = false } = {}) => 
 };
 
 const toggleChrome = () => {
-  if (playbackErrorText()) return;
+  if (state.trailerMode || playbackErrorText()) return;
   const nextControlsVisible = !state.controlsVisible;
   if (nextControlsVisible) {
     chromeAutoHideActivity += 1;
