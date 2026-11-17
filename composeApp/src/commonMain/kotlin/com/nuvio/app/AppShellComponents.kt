@@ -35,7 +35,9 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -70,6 +72,7 @@ import com.nuvio.app.core.ui.nuvio
 import com.nuvio.app.features.cloud.CloudLibraryContentType
 import com.nuvio.app.features.cloud.CloudLibraryFile
 import com.nuvio.app.features.cloud.CloudLibraryItem
+import com.nuvio.app.features.browse.MediaBrowseScreen
 import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.HomeScreen
 import com.nuvio.app.features.home.MetaPreview
@@ -93,6 +96,7 @@ import com.nuvio.app.features.settings.AppBrandWordmark
 import com.nuvio.app.features.settings.NavBarStyle
 import com.nuvio.app.features.settings.SettingsScreen
 import com.nuvio.app.features.settings.ThemeSettingsRepository
+import com.nuvio.app.features.tmdb.TmdbEntityMediaType
 import com.nuvio.app.features.watchprogress.ContinueWatchingItem
 import com.nuvio.app.isDesktop
 import com.nuvio.app.navigation.AppRoute
@@ -103,9 +107,11 @@ import kotlinx.coroutines.flow.Flow
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.app_brand_name
 import nuvio.composeapp.generated.resources.compose_nav_home
+import nuvio.composeapp.generated.resources.compose_nav_films
 import nuvio.composeapp.generated.resources.compose_nav_library
 import nuvio.composeapp.generated.resources.compose_nav_profile
 import nuvio.composeapp.generated.resources.compose_nav_search
+import nuvio.composeapp.generated.resources.compose_nav_series
 import nuvio.composeapp.generated.resources.compose_nav_settings
 import nuvio.composeapp.generated.resources.compose_settings_page_root
 import nuvio.composeapp.generated.resources.sidebar_library
@@ -225,6 +231,7 @@ internal fun AppTabHost(
     requests: AppTabRequests,
     state: AppTabState,
     actions: AppTabActions,
+    onTabSelected: (AppScreenTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     RootTabHost(
@@ -249,8 +256,19 @@ internal fun AppTabHost(
                         continueWatchingDisintegrationRequest = state.continueWatchingDisintegrationRequest,
                         onFolderClick = actions.onFolderClick,
                         onFirstCatalogRendered = actions.onInitialHomeContentRendered,
+                        onAddSource = actions.onAddonsSettingsClick,
                     )
                 }
+            }
+
+            AppScreenTab.Films, AppScreenTab.Series -> {
+                MediaBrowseScreen(
+                    mediaType = if (tab == AppScreenTab.Films) TmdbEntityMediaType.MOVIE else TmdbEntityMediaType.TV,
+                    modifier = Modifier.fillMaxSize(),
+                    topChromePadding = state.topChromePadding,
+                    onPosterClick = actions.onPosterClick,
+                    onPosterLongClick = actions.onPosterLongClick,
+                )
             }
 
             AppScreenTab.Search -> {
@@ -830,6 +848,32 @@ internal fun DesktopHoverSidebar(
                     Icon(
                         imageVector = Icons.Filled.Home,
                         contentDescription = stringResource(Res.string.compose_nav_home),
+                        modifier = Modifier.size(DesktopSidebarIconSize),
+                        tint = color,
+                    )
+                }
+                DesktopSidebarItem(
+                    label = stringResource(Res.string.compose_nav_films),
+                    selected = selectedTab == AppScreenTab.Films,
+                    expanded = sidebarExpanded,
+                    onClick = { selectTab(AppScreenTab.Films) },
+                ) { color ->
+                    Icon(
+                        imageVector = Icons.Rounded.Movie,
+                        contentDescription = stringResource(Res.string.compose_nav_films),
+                        modifier = Modifier.size(DesktopSidebarIconSize),
+                        tint = color,
+                    )
+                }
+                DesktopSidebarItem(
+                    label = stringResource(Res.string.compose_nav_series),
+                    selected = selectedTab == AppScreenTab.Series,
+                    expanded = sidebarExpanded,
+                    onClick = { selectTab(AppScreenTab.Series) },
+                ) { color ->
+                    Icon(
+                        imageVector = Icons.Rounded.Tv,
+                        contentDescription = stringResource(Res.string.compose_nav_series),
                         modifier = Modifier.size(DesktopSidebarIconSize),
                         tint = color,
                     )

@@ -38,6 +38,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.features.home.HomeHeroMeta
+import com.nuvio.app.features.home.withHeroMeta
+import com.nuvio.app.features.details.MetaDetailsRepository
+import com.nuvio.app.features.tmdb.TmdbSettingsRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -223,6 +230,20 @@ internal fun HomePosterHoverPreview(
         }
     }
 
+    val tmdbSettings by TmdbSettingsRepository.uiState.collectAsStateWithLifecycle()
+    var previewItem by remember(item, tmdbSettings.language) { mutableStateOf(item) }
+    LaunchedEffect(popupMounted, item, tmdbSettings.language) {
+        if (popupMounted) {
+            try {
+                val details = withTimeoutOrNull(6_000) { MetaDetailsRepository.fetch(type = item.type, id = item.id) }
+                if (details != null) previewItem = item.withHeroMeta(HomeHeroMeta(details = details))
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                // The original poster and actions remain usable if metadata is unavailable.
+            }
+        }
+    }
+
     LaunchedEffect(popupMounted, item.type, item.id) {
         if (popupMounted) {
             previewIsSaved = LibraryRepository.isSaved(item.id, item.type)
@@ -317,7 +338,7 @@ internal fun HomePosterHoverPreview(
                     ),
                 ) {
                     HomePosterPreviewCard(
-                        item = item,
+                        item = previewItem,
                         isWatched = isWatched,
                         isSaved = previewIsSaved,
                         trailerEnabled = trailerPlaybackEnabled,

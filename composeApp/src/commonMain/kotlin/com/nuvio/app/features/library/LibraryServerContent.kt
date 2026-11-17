@@ -70,7 +70,8 @@ internal fun LazyListScope.serverLibraryContent(
             if (section != null && section.items.isNotEmpty()) {
                 item(key = "server-shelf:${section.key}") {
                     HomeCatalogRowSection(
-                        section = section,
+                        title = section.title,
+                        entries = section.items,
                         watchedKeys = watchedKeys,
                         fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
                         onViewAllClick = onCatalogClick?.takeIf { section.hasMore }?.let { open -> { open(section) } },

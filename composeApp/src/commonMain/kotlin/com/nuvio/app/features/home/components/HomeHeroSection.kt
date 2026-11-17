@@ -128,6 +128,7 @@ fun HomeHeroSection(
     showImdbRating: Boolean = true,
     showMdbListRatings: Boolean = false,
     onItemClick: ((MetaPreview) -> Unit)? = null,
+    desktopTopInset: Dp = 0.dp,
 ) {
     if (items.isEmpty()) return
 
@@ -227,6 +228,7 @@ fun HomeHeroSection(
                     showImdbRating = showImdbRating,
                     showMdbListRatings = showMdbListRatings,
                     onItemClick = onItemClick,
+                    topInset = desktopTopInset,
                 )
             } else {
                 DefaultHomeHeroFrame(
@@ -567,6 +569,7 @@ private fun DesktopHomeHeroFrame(
     showImdbRating: Boolean,
     showMdbListRatings: Boolean,
     onItemClick: ((MetaPreview) -> Unit)?,
+    topInset: Dp,
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val opacity = NuvioTokens.Opacity
@@ -674,7 +677,7 @@ private fun DesktopHomeHeroFrame(
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()
                         .padding(
-                            top = space.s32,
+                            top = maxOf(space.s32, topInset + space.s12),
                             end = contentHorizontalPadding,
                         ),
                     buttonSize = 48.dp,

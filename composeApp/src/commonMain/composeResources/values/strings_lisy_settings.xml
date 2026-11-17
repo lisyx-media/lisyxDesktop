@@ -1,0 +1,15 @@
+<resources>
+    <string name="lisy_settings_title">Lisy</string>
+    <string name="lisy_settings_description">Enter your IPTV server details.</string>
+    <string name="lisy_server_name">Server name</string>
+    <string name="lisy_server_url">Server URL</string>
+    <string name="lisy_server_mac">MAC address</string>
+    <string name="lisy_invalid_name">Enter a server name.</string>
+    <string name="lisy_invalid_url">Enter a complete URL starting with http:// or https://.</string>
+    <string name="lisy_invalid_mac">Enter a valid MAC address, for example 00:1A:79:00:00:00.</string>
+    <string name="lisy_save_error">Could not save the details. Please retry.</string>
+    <string name="lisy_saved">Details saved on this device.</string>
+    <string name="lisy_save">Save</string>
+    <string name="lisy_remove">Remove server</string>
+    <string name="lisy_remove_confirmation">Remove this server’s details for this profile?</string>
+</resources>

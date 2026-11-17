@@ -40,7 +40,6 @@ import com.nuvio.app.core.ui.LocalNuvioBottomNavigationOverlayPadding
 import com.nuvio.app.core.ui.LocalNuvioNavBarScrollState
 import com.nuvio.app.core.ui.NuvioNavBarScrollState
 import com.nuvio.app.core.ui.NuvioClassicNavigationBar
-import com.nuvio.app.core.ui.DesktopNavigationBar
 import com.nuvio.app.core.ui.FloatingNavigationBar
 import com.nuvio.app.core.ui.FloatingNavigationItem
 import com.nuvio.app.core.ui.PlatformBackHandler
@@ -101,7 +100,7 @@ internal fun MainTabsDestination(
         val topChromePadding = if (useFloatingTopBar || useDesktopTopBar) {
             val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             if (useDesktopTopBar) {
-                statusBarPadding + 48.dp + 64.dp
+                statusBarPadding + LisyxDesktopHeaderHeight + 4.dp
             } else {
                 max(statusBarPadding + 24.dp, 48.dp) + 64.dp
             }
@@ -140,7 +139,6 @@ internal fun MainTabsDestination(
             0.dp
         }
         val navBarGlowEnabled by ThemeSettingsRepository.navBarGlowEnabled.collectAsStateWithLifecycle()
-        var isTopProfileSwitcherOpen by remember { mutableStateOf(false) }
         val floatingNavigationItems = listOf(
             FloatingNavigationItem(
                 selected = selectedTab == AppScreenTab.Home,
@@ -171,7 +169,6 @@ internal fun MainTabsDestination(
                         onProfileSelected = onProfileSelected,
                         onAddProfileRequested = onAddProfileRequested,
                         hazeState = navBarHazeState,
-                        onPopupStateChanged = { isTopProfileSwitcherOpen = it },
                         avatarSize = if (isDesktop && screenWidth < 800.dp) 26 else if (isDesktop && screenWidth > 1600.dp) 30 else 28,
                         popupBelowAnchor = isDesktop || isTabletLayout,
                     )
@@ -222,12 +219,10 @@ internal fun MainTabsDestination(
             },
         ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
-                val requiresNavBarHaze = if (useDesktopTopBar) {
-                    true
-                } else if (isTabletLayout) {
+                val requiresNavBarHaze = if (isTabletLayout) {
                     useFloatingTopBar
                 } else {
-                    !useNativeBottomTabs && navBarStyleSetting != NavBarStyle.CLASSIC
+                    !isDesktop && !useNativeBottomTabs && navBarStyleSetting != NavBarStyle.CLASSIC
                 }
                 val shouldAttachNestedScroll = if (isDesktop || isTabletLayout) {
                     true
@@ -246,6 +241,7 @@ internal fun MainTabsDestination(
                             topChromePadding = topChromePadding,
                         ),
                         actions = tabActions,
+                        onTabSelected = onTabSelected,
                         modifier = Modifier
                             .fillMaxSize()
                             .then(if (requiresNavBarHaze) Modifier.hazeSource(state = navBarHazeState) else Modifier)
@@ -301,20 +297,14 @@ internal fun MainTabsDestination(
                 }
 
                 if (useDesktopTopBar) {
-                    DesktopNavigationBar(
-                        items = floatingNavigationItems,
+                    LisyxDesktopHeader(
+                        scrolled = navBarScrollState.totalScrollOffset > 12f || selectedTab !in listOf(AppScreenTab.Home, AppScreenTab.Films, AppScreenTab.Series),
+                        selectedTab = selectedTab,
+                        onTabSelected = onTabSelected,
+                        onProfileSelected = onProfileSelected,
+                        onAddProfileRequested = onAddProfileRequested,
+                        titleBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
                         modifier = Modifier.align(Alignment.TopCenter),
-                        contentPadding = PaddingValues(
-                            top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 10.dp,
-                            bottom = 8.dp,
-                        ),
-                        scrollState = navBarScrollState,
-                        hazeState = navBarHazeState,
-                        navBarStyle = navBarStyleSetting,
-                        isHeroEnabled = homeCatalogSettingsUiState.heroEnabled,
-                        profileSwitcherOpen = isTopProfileSwitcherOpen,
-                        windowWidth = screenWidth,
-                        glowEnabled = navBarGlowEnabled,
                     )
                 }
 

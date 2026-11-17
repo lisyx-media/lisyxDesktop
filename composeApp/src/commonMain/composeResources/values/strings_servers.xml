@@ -39,6 +39,13 @@
     <string name="servers_error_forbidden">This user does not have access.</string>
     <string name="servers_error_failed">Could not connect to the server.</string>
     <string name="home_empty_no_sources_title">No content sources</string>
+    <string name="home_discovery_trending_movies">Trending Movies</string>
+    <string name="home_discovery_trending_series">Trending Series</string>
+    <string name="home_discovery_unavailable_title">Discovery is unavailable</string>
+    <string name="home_discovery_unavailable_message">The TMDB catalog could not be loaded. Try again in a moment.</string>
+    <string name="home_discovery_add_source_title">Watch with your sources</string>
+    <string name="home_discovery_add_source_message">Add a source to find playable streams for the titles you discover.</string>
+    <string name="home_discovery_add_source_action">Add a source</string>
     <string name="home_empty_no_sources_message">Add an addon or connect a media server to see catalogs on Home.</string>
     <string name="servers_failure_auth">Sign in to this server again in Settings.</string>
     <string name="servers_failure_unreachable">The server is unavailable.</string>

@@ -57,6 +57,9 @@ import com.nuvio.app.features.home.components.HomeCatalogRowSection
 import com.nuvio.app.features.home.components.HomeContinueWatchingSection
 import com.nuvio.app.features.home.components.HomeEmptyStateCard
 import com.nuvio.app.features.home.components.HomeHeroReservedSpace
+import com.nuvio.app.features.tmdb.tmdbBrowseRowTitle
+import com.nuvio.app.features.tmdb.TmdbEntityMediaType
+import com.nuvio.app.features.catalog.CatalogTarget
 import com.nuvio.app.features.home.components.HomeHeroSection
 import com.nuvio.app.features.home.components.HomeSkeletonHero
 import com.nuvio.app.features.home.components.HomeSkeletonRow
@@ -132,6 +135,7 @@ fun HomeScreen(
     continueWatchingDisintegrationRequest: DisintegrationRequest<String>? = null,
     onFolderClick: ((collectionId: String, folderId: String) -> Unit)? = null,
     onFirstCatalogRendered: (() -> Unit)? = null,
+    onAddSource: (() -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
@@ -150,7 +154,20 @@ fun HomeScreen(
 
     val addonsUiState by AddonRepository.uiState.collectAsStateWithLifecycle()
     val homeUiState by HomeRepository.uiState.collectAsStateWithLifecycle()
-    val homeHeroState = rememberHomeHeroState(homeUiState.heroItems)
+    var discoveryRefresh by remember { mutableStateOf(0) }
+    val discovery = rememberHomeDiscovery(discoveryRefresh)
+    val heroItems = remember(discovery.movies, discovery.series, homeUiState.heroItems) {
+        val featuredMovies = discovery.movies.filter { !it.banner.isNullOrBlank() }.take(3)
+        val featuredSeries = discovery.series.filter { !it.banner.isNullOrBlank() }.take(2)
+        val featured = buildList {
+            repeat(maxOf(featuredMovies.size, featuredSeries.size)) { index ->
+                featuredMovies.getOrNull(index)?.let { add(it) }
+                featuredSeries.getOrNull(index)?.let { add(it) }
+            }
+        }
+        homeUiState.heroItems.ifEmpty { featured }
+    }
+    val homeHeroState = rememberHomeHeroState(heroItems)
     val homeSettingsUiState by remember {
         HomeCatalogSettingsRepository.snapshot()
         HomeCatalogSettingsRepository.uiState
@@ -208,6 +225,7 @@ fun HomeScreen(
             NetworkCondition.Online -> {
                 if (observedOfflineState) {
                     observedOfflineState = false
+                    if (!discovery.hasItems) discoveryRefresh++
                     HomeRepository.refresh(addonsUiState.addons.enabledAddons(), force = true)
                 }
             }
@@ -864,11 +882,12 @@ fun HomeScreen(
     val hasServerLibraries = serversUiState.enabledConnections.any { it.selectedLibraries.isNotEmpty() }
     val addonManifestsLoading = enabledAddons.any { it.isRefreshing }
     val addonManifestErrorMessage = enabledAddons.firstEnabledManifestError()
-    val isResolvingHeroSources = addonManifestsLoading || homeUiState.isLoading
+    val homeContentLoading = homeUiState.isLoading || discovery.isLoading
+    val isResolvingHeroSources = addonManifestsLoading || homeContentLoading
     var firstCatalogReported by remember { mutableStateOf(false) }
 
-    LaunchedEffect(homeUiState.sections.firstOrNull()?.key, onFirstCatalogRendered) {
-        if (firstCatalogReported || homeUiState.sections.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(discovery.hasItems, homeUiState.sections.isNotEmpty(), onFirstCatalogRendered) {
+        if (firstCatalogReported || (!discovery.hasItems && homeUiState.sections.isEmpty())) return@LaunchedEffect
         firstCatalogReported = true
         onFirstCatalogRendered?.invoke()
     }
@@ -915,10 +934,10 @@ fun HomeScreen(
             item.isCollection && collectionsMap[item.key] != null
         }
     }
-    val hasRenderableHomeRows = homeUiState.sections.isNotEmpty() || hasRenderableCollectionRows
+    val hasRenderableHomeRows = discovery.hasItems || homeUiState.sections.isNotEmpty() || hasRenderableCollectionRows
     val showHeroSlot = shouldShowHomeHeroSlot(
         heroEnabled = homeSettingsUiState.heroEnabled,
-        hasHeroItems = homeUiState.heroItems.isNotEmpty(),
+        hasHeroItems = heroItems.isNotEmpty(),
         isResolvingHeroSources = isResolvingHeroSources,
         hasRenderableHomeRows = hasRenderableHomeRows,
     )
@@ -928,12 +947,12 @@ fun HomeScreen(
         showHeroSlot = showHeroSlot,
     )
     val showHeroSkeleton = showHeroSlot &&
-        homeUiState.heroItems.isEmpty() &&
+        heroItems.isEmpty() &&
         isResolvingHeroSources
     val isInitialHomeContentLoading = shouldShowInitialHomeLoading(
         hasRenderableHomeRows = hasRenderableHomeRows,
         addonManifestsLoading = addonManifestsLoading,
-        homeCatalogLoading = homeUiState.isLoading,
+        homeCatalogLoading = homeContentLoading,
     )
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -1015,7 +1034,7 @@ fun HomeScreen(
                                 sectionPadding = if (isDesktop) homeSectionPadding else null,
                             )
 
-                            homeUiState.heroItems.isNotEmpty() -> HomeHeroSection(
+                            homeHeroState.items.isNotEmpty() -> HomeHeroSection(
                                 items = homeHeroState.items,
                                 modifier = Modifier,
                                 viewportHeight = maxHeight,
@@ -1026,6 +1045,7 @@ fun HomeScreen(
                                 showImdbRating = homeHeroState.showImdbRating,
                                 showMdbListRatings = homeHeroState.showMdbListRatings,
                                 onItemClick = onPosterClick,
+                                desktopTopInset = topChromePadding ?: 0.dp,
                             )
 
                             else -> HomeHeroReservedSpace(
@@ -1064,7 +1084,7 @@ fun HomeScreen(
                     }
                 }
 
-                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows -> {
+                !hasActiveAddons && !hasServerLibraries && !hasRenderableCollectionRows && !discovery.hasItems -> {
                     homeContinueWatchingSections(
                         preferences = continueWatchingPreferences,
                         continueWatchingItems = continueWatchingItems,
@@ -1108,6 +1128,16 @@ fun HomeScreen(
                                 )
                             }
 
+                            isDesktop -> {
+                                HomeEmptyStateCard(
+                                    modifier = Modifier.padding(horizontal = homeSectionPadding),
+                                    title = stringResource(Res.string.home_discovery_unavailable_title),
+                                    message = stringResource(Res.string.home_discovery_unavailable_message),
+                                    actionLabel = stringResource(Res.string.action_retry),
+                                    onActionClick = { discoveryRefresh++ },
+                                )
+                            }
+
                             else -> {
                                 HomeEmptyStateCard(
                                     modifier = Modifier.padding(
@@ -1121,7 +1151,7 @@ fun HomeScreen(
                     }
                 }
 
-                homeUiState.sections.isEmpty() && homeUiState.heroItems.isEmpty() &&
+                !discovery.hasItems && homeUiState.sections.isEmpty() && heroItems.isEmpty() &&
                     (!continueWatchingPreferences.isVisible || !hasContinueWatchingRows) &&
                     !hasRenderableCollectionRows -> {
                     item(key = "home_empty", contentType = "empty") {
@@ -1180,6 +1210,36 @@ fun HomeScreen(
                         disintegrationRequest = continueWatchingDisintegrationRequest,
                     )
 
+                    discovery.shelves.forEach { shelf ->
+                        if (shelf.row.items.isNotEmpty()) {
+                            item(key = "discovery_${shelf.key}", contentType = "catalog") {
+                                val title = stringResource(tmdbBrowseRowTitle(shelf.row.id, shelf.mediaType))
+                                val section = HomeCatalogSection(
+                                    key = shelf.key,
+                                    title = title,
+                                    subtitle = "TMDB",
+                                    addonName = "TMDB",
+                                    target = CatalogTarget.Tmdb(
+                                        contentType = if (shelf.mediaType == TmdbEntityMediaType.MOVIE) "movie" else "series",
+                                        categoryId = shelf.row.id,
+                                    ),
+                                    items = shelf.row.items,
+                                )
+                                HomeCatalogRowSection(
+                                    title = title,
+                                    entries = shelf.row.items,
+                                    modifier = Modifier.padding(bottom = 12.dp),
+                                    sectionPadding = homeSectionPadding,
+                                    onViewAllClick = onCatalogClick?.let { openCatalog -> { openCatalog(section) } },
+                                    watchedKeys = watchedUiState.watchedKeys,
+                                    fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
+                                    onPosterClick = onPosterClick,
+                                    onPosterLongClick = onPosterLongClick,
+                                )
+                            }
+                        }
+                    }
+
                     keyedEnabledHomeItems.forEach { keyedSettingsItem ->
                         val settingsItem = keyedSettingsItem.value
                         if (settingsItem.isCollection) {
@@ -1200,7 +1260,7 @@ fun HomeScreen(
                             if (section != null && section.items.isNotEmpty()) {
                                 item(key = keyedSettingsItem.lazyKey, contentType = "catalog") {
                                     HomeCatalogRowSection(
-                                        section = section,
+                                        title = section.title,
                                         entries = if (isDesktop) {
                                             // The row is lazy, so desktop can expose the fetched catalog without
                                             // composing every poster up front. Mobile keeps its compact preview.

@@ -2,6 +2,10 @@ package com.nuvio.app.features.search
 
 import co.touchlab.kermit.Logger
 import com.nuvio.app.core.i18n.localizedMediaTypeLabel
+import com.nuvio.app.features.tmdb.TmdbEntityMediaType
+import com.nuvio.app.features.tmdb.TmdbMetadataService
+import com.nuvio.app.features.tmdb.TmdbSettingsRepository
+import com.nuvio.app.isDesktop
 import com.nuvio.app.features.addons.AddonCatalog
 import com.nuvio.app.features.addons.AddonExtraProperty
 import com.nuvio.app.features.addons.ManagedAddon
@@ -59,6 +63,7 @@ private data class DiscoverRequestKey(
     val sources: List<DiscoverCatalogOption>,
     val hideUnreleasedContent: Boolean,
     val hasPendingAddonManifests: Boolean,
+    val tmdb: TmdbSearchSettings?,
 )
 
 object SearchRepository {
@@ -79,6 +84,7 @@ object SearchRepository {
         query: String,
         addons: List<ManagedAddon>,
         forceRefresh: Boolean = false,
+        includeTmdb: Boolean = true,
     ) {
         val normalizedQuery = query.trim()
         if (normalizedQuery.isBlank()) {
@@ -91,7 +97,8 @@ object SearchRepository {
         val addonManifestErrorMessage = enabledAddons.firstEnabledManifestError()
         val activeAddons = enabledAddons.filter { it.manifest != null }
         val serverSearches = ServerCatalog.searchTargets()
-        if (activeAddons.isEmpty() && serverSearches.isEmpty()) {
+        val tmdb = if (includeTmdb) desktopTmdbSearchSettings() else null
+        if (activeAddons.isEmpty() && serverSearches.isEmpty() && tmdb == null) {
             activeJob?.cancel()
             lastRequestKey = null
             _uiState.value = SearchUiState(
@@ -110,7 +117,7 @@ object SearchRepository {
             addons = activeAddons,
             query = normalizedQuery,
         )
-        if (requests.isEmpty() && serverSearches.isEmpty()) {
+        if (requests.isEmpty() && serverSearches.isEmpty() && tmdb == null) {
             activeJob?.cancel()
             lastRequestKey = null
             _uiState.value = SearchUiState(
@@ -122,6 +129,8 @@ object SearchRepository {
 
         val requestKey = buildString {
             append(normalizedQuery.lowercase())
+            append("|tmdb:")
+            append(tmdb)
             append('|')
             append(HomeCatalogSettingsRepository.snapshot().hideUnreleasedContent)
             append('|')
@@ -137,8 +146,15 @@ object SearchRepository {
                 append(ref.connection.selectedLibraries(ref.kind).joinToString(",") { it.id })
             }
         }
+        val tmdbLoaders: List<suspend () -> HomeCatalogSection> = if (tmdb == null) {
+            emptyList()
+        } else {
+            TmdbEntityMediaType.entries.map { mediaType ->
+                suspend { searchTmdbSection(mediaType, normalizedQuery, tmdb.language) }
+            }
+        }
         val loaders: List<suspend () -> HomeCatalogSection> =
-            requests.map { request -> suspend { request.toSection(forceRefresh = forceRefresh) } } +
+            tmdbLoaders + requests.map { request -> suspend { request.toSection(forceRefresh = forceRefresh) } } +
                 serverSearches.map { ref ->
                     suspend {
                         ServerCatalog.searchSection(ref, normalizedQuery).also { section ->
@@ -240,13 +256,15 @@ object SearchRepository {
     fun refreshDiscover(
         addons: List<ManagedAddon>,
         forceRefresh: Boolean = false,
+        includeTmdb: Boolean = true,
     ) {
         val enabledAddons = addons.enabledAddons()
         val hasPendingAddonManifests = enabledAddons.hasPendingEnabledManifests()
         val addonManifestErrorMessage = enabledAddons.firstEnabledManifestError()
         val activeAddons = enabledAddons.filter { it.manifest != null }
         val serverLibraries = ServerCatalog.titleLibraries()
-        if (activeAddons.isEmpty() && serverLibraries.isEmpty()) {
+        val tmdb = if (includeTmdb) desktopTmdbSearchSettings() else null
+        if (activeAddons.isEmpty() && serverLibraries.isEmpty() && tmdb == null) {
             activeDiscoverJob?.cancel()
             discoverSources = emptyList()
             lastDiscoverRequestKey = null
@@ -263,7 +281,8 @@ object SearchRepository {
             return
         }
 
-        val sources = buildDiscoverSources(activeAddons) + serverLibraries.filter { it.library.kind != ServerMediaKind.MIXED }.map { ref ->
+        val tmdbSources = if (tmdb == null) emptyList() else TmdbEntityMediaType.entries.map { it.discoverOption() }
+        val sources = tmdbSources + buildDiscoverSources(activeAddons) + serverLibraries.filter { it.library.kind != ServerMediaKind.MIXED }.map { ref ->
             DiscoverCatalogOption(
                 key = ref.target.let { "server:${it.connectionId}:${it.libraryId}" },
                 addonName = ServerRepository.sourceLabel(ref.connection),
@@ -281,6 +300,7 @@ object SearchRepository {
             sources = sources,
             hideUnreleasedContent = hideUnreleasedContent,
             hasPendingAddonManifests = hasPendingAddonManifests,
+            tmdb = tmdb,
         )
         if (canReuseRequestState(forceRefresh, requestKey, lastDiscoverRequestKey)) {
             log.d {
@@ -517,7 +537,7 @@ object SearchRepository {
         val current = _discoverUiState.value
         val selectedCatalog = current.selectedCatalog ?: return
         val requestedSkip = if (reset) 0 else current.nextSkip ?: return
-        val requestUrl = if (selectedCatalog.server != null) {
+        val requestUrl = if (selectedCatalog.server != null || selectedCatalog.tmdb != null) {
             selectedCatalog.key
         } else {
             buildCatalogUrl(
@@ -548,7 +568,15 @@ object SearchRepository {
         activeDiscoverJob = scope.launch {
             runCatching {
                 val server = selectedCatalog.server
-                if (server != null) {
+                val tmdb = selectedCatalog.tmdb
+                if (tmdb != null) {
+                    TmdbMetadataService.fetchBrowseCatalogPage(
+                        mediaType = tmdb,
+                        categoryId = selectedCatalog.catalogId,
+                        language = TmdbSettingsRepository.snapshot().language,
+                        page = requestedSkip.coerceAtLeast(1),
+                    ) ?: error(getString(Res.string.discover_empty_load_failed_message))
+                } else if (server != null) {
                     ServerCatalog.page(server, skip = requestedSkip)
                 } else {
                     fetchCatalogPage(
@@ -632,6 +660,55 @@ object SearchRepository {
     }
 }
 
+private data class TmdbSearchSettings(val language: String, val credentialFingerprint: Int)
+
+private fun desktopTmdbSearchSettings(): TmdbSearchSettings? {
+    if (!isDesktop) return null
+    val apiKey = TmdbSettingsRepository.effectiveApiKey().takeIf { it.isNotBlank() } ?: return null
+    return TmdbSearchSettings(TmdbSettingsRepository.snapshot().language, apiKey.hashCode())
+}
+
+private val TmdbEntityMediaType.contentType: String
+    get() = if (this == TmdbEntityMediaType.MOVIE) "movie" else "series"
+
+private fun TmdbEntityMediaType.discoverOption(): DiscoverCatalogOption = DiscoverCatalogOption(
+    key = "tmdb:$contentType:trending",
+    addonName = "TMDB",
+    manifestUrl = "",
+    type = contentType,
+    catalogId = "trending",
+    catalogName = "TMDB",
+    supportsPagination = true,
+    tmdb = this,
+)
+
+private suspend fun searchTmdbSection(
+    mediaType: TmdbEntityMediaType,
+    query: String,
+    language: String,
+): HomeCatalogSection {
+    val items = TmdbMetadataService.fetchSearchItems(mediaType, query, language)
+        ?: error(getString(Res.string.compose_search_empty_failed_message))
+    val available = if (HomeCatalogSettingsRepository.snapshot().hideUnreleasedContent) {
+        items.filterReleasedItems(CurrentDateProvider.todayIsoDate())
+    } else {
+        items
+    }
+    val pattern = com.nuvio.app.core.poster.CustomPosterUrlRepository.let { repo ->
+        repo.ensureLoaded()
+        repo.patternForScreen(com.nuvio.app.core.poster.CustomPosterScreen.SEARCH)
+    }
+    val type = mediaType.contentType
+    return HomeCatalogSection(
+        key = "tmdb:search:$type",
+        title = getString(if (mediaType == TmdbEntityMediaType.MOVIE) Res.string.media_movies else Res.string.media_series),
+        subtitle = "TMDB",
+        addonName = "TMDB",
+        target = CatalogTarget.Tmdb(type, "search", query),
+        items = available.withCustomPosterUrls(pattern),
+    )
+}
+
 private data class IndexedSearchResult(
     val index: Int,
     val section: HomeCatalogSection? = null,
@@ -639,7 +716,7 @@ private data class IndexedSearchResult(
 )
 
 private fun Array<IndexedSearchResult?>.orderedSections(): List<HomeCatalogSection> =
-    mapNotNull { result -> result?.section }
+    mapNotNull { result -> result?.section?.takeIf { it.items.isNotEmpty() } }
 
 private fun CatalogPage.withUnreleasedFilter(): CatalogPage {
     if (!HomeCatalogSettingsRepository.snapshot().hideUnreleasedContent) return this

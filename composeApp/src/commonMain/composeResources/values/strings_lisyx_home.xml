@@ -1,0 +1,7 @@
+<resources>
+    <string name="home_featured_label">Featured</string>
+    <string name="home_featured_position">%1$d / %2$d</string>
+    <string name="lisyx_skip_intro">Skip intro</string>
+    <string name="lisyx_home_popular_movies">Popular movies</string>
+    <string name="lisyx_home_acclaimed_series">Acclaimed series</string>
+</resources>

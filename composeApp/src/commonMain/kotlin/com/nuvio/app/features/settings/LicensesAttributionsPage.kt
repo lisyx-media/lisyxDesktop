@@ -108,6 +108,16 @@ private fun LicensesAttributionsBody(
             isTablet = isTablet,
         ) {
             LicenseRow(
+                item = LicenseItem(
+                    titleRes = Res.string.lisyx_credits_title,
+                    bodyRes = Res.string.lisyx_credits_body,
+                    licenseRes = Res.string.lisyx_credits_license,
+                    link = "https://github.com/lisyx-media/lisyxDesktop",
+                ),
+                isTablet = isTablet,
+            )
+            PlainStackDivider()
+            LicenseRow(
                 item = appLicenseItem(),
                 isTablet = isTablet,
             )

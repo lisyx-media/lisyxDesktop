@@ -7,6 +7,8 @@ enum class AppScreenTab {
     Search,
     Library,
     Settings,
+    Films,
+    Series,
     ;
 
     companion object {
@@ -16,7 +18,7 @@ enum class AppScreenTab {
 }
 
 internal fun AppScreenTab.toNativeNavigationTab(): NativeNavigationTab = when (this) {
-    AppScreenTab.Home -> NativeNavigationTab.Home
+    AppScreenTab.Home, AppScreenTab.Films, AppScreenTab.Series -> NativeNavigationTab.Home
     AppScreenTab.Search -> NativeNavigationTab.Search
     AppScreenTab.Library -> NativeNavigationTab.Library
     AppScreenTab.Settings -> NativeNavigationTab.Settings

@@ -84,6 +84,9 @@ class AppUpdaterController internal constructor(
 
     fun checkForUpdates(force: Boolean, showNoUpdateFeedback: Boolean) {
         if (!AppFeaturePolicy.inAppUpdaterEnabled || !AppUpdaterPlatform.isSupported) {
+            updateCheckJob?.cancel()
+            downloadJob?.cancel()
+            _uiState.value = AppUpdaterUiState(updateChannel = preferences.channel.value)
             if (showNoUpdateFeedback) {
                 scope.launch {
                     NuvioToastController.show(getString(Res.string.updates_not_available))
@@ -192,6 +195,10 @@ class AppUpdaterController internal constructor(
     }
 
     fun downloadUpdate() {
+        if (!AppUpdaterPlatform.isSupported) {
+            _uiState.value = AppUpdaterUiState(updateChannel = preferences.channel.value)
+            return
+        }
         if (_uiState.value.isDownloading) return
         val update = _uiState.value.update ?: return
         if (_uiState.value.isDebugTest) {
@@ -254,6 +261,10 @@ class AppUpdaterController internal constructor(
     }
 
     fun installDownloadedUpdate() {
+        if (!AppUpdaterPlatform.isSupported) {
+            _uiState.value = AppUpdaterUiState(updateChannel = preferences.channel.value)
+            return
+        }
         val updatePath = _uiState.value.downloadedUpdatePath ?: return
         if (!AppUpdaterPlatform.canInstallDownloadedUpdate()) {
             _uiState.update { state -> state.copy(showInstallPermissionDialog = true, showDialog = true) }
@@ -276,6 +287,10 @@ class AppUpdaterController internal constructor(
     }
 
     fun resumeInstallation() {
+        if (!AppUpdaterPlatform.isSupported) {
+            _uiState.value = AppUpdaterUiState(updateChannel = preferences.channel.value)
+            return
+        }
         if (AppUpdaterPlatform.canInstallDownloadedUpdate()) {
             installDownloadedUpdate()
         } else {

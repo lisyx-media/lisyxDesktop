@@ -86,6 +86,7 @@ internal enum class SettingsPage(
         category = SettingsCategory.Look,
         parentPage = null,
     ),
+    Lisy(Res.string.lisy_settings_title, SettingsCategory.Services, Root),
     Layout(
         titleRes = Res.string.compose_settings_page_layout,
         category = SettingsCategory.Look,
@@ -277,6 +278,7 @@ internal fun settingsCategoryForName(name: String): SettingsCategory = when (nam
 
 internal val SettingsPage.icon: ImageVector
     get() = when (this) {
+        SettingsPage.Lisy -> Icons.Default.Dns
         SettingsPage.Root -> Icons.Rounded.Settings
         SettingsPage.Account -> Icons.Default.Person
         SettingsPage.SupportersContributors -> Icons.Default.Favorite

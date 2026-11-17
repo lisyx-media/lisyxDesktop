@@ -672,6 +672,7 @@ val macosPlayerBridgeCommand = if (missingMacosPlayerBridgeInputs.isNotEmpty()) 
           -lswiftCompatibility56 \
           -lswiftCompatibilityConcurrency \
           -lswiftCompatibilityPacks \
+          -lswiftCore \
           -lc++ \
           -Wl,-rpath,@loader_path \
           ${shellQuote(bundledMacosLibmpvDylib.absolutePath)}

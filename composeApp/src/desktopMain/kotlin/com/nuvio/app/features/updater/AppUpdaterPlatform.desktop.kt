@@ -24,7 +24,7 @@ import kotlin.concurrent.thread
 import kotlin.io.path.createDirectories
 import kotlin.system.exitProcess
 
-private const val desktopUpdaterPreferencesName = "nuvio_updater"
+private const val desktopUpdaterPreferencesName = "lisyx_updater"
 private const val ignoredTagKey = "ignored_release_tag"
 private const val updateChannelKey = "update_channel"
 
@@ -46,18 +46,16 @@ actual object AppUpdaterPlatform {
         if (currentOs == DesktopUpdaterOs.LINUX) detectLinuxInstallMethod() else LinuxInstallMethod.UNKNOWN
     }
 
-    // A Flatpak cannot install anything for itself: the sandbox has no write
-    // access to /app and the manifest grants no talk-name for the host Flatpak
-    // service, so the update belongs to the user's store, not to this dialog.
-    actual val isSupported: Boolean
-        get() = currentOs != DesktopUpdaterOs.UNKNOWN && linuxInstallMethod != LinuxInstallMethod.FLATPAK
+    // Lisyx has no signed release/update channel yet. Disable every updater
+    // entry point, including installation of packages left by older builds.
+    actual val isSupported: Boolean = false
 
     actual val releaseSource: AppUpdateReleaseSource = AppUpdateReleaseSource(
-        owner = "NuvioMedia",
-        repo = "NuvioDesktop",
+        owner = "lisyx-media",
+        repo = "lisyxDesktop",
         channelBranch = null,
         includePrereleases = true,
-        userAgent = "NuvioDesktop",
+        userAgent = "LisyxDesktop",
     )
 
     actual val assetSelector: AppUpdateAssetSelector
@@ -89,6 +87,7 @@ actual object AppUpdaterPlatform {
         onProgress: (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
+            check(isSupported) { "Lisyx desktop updates are not enabled." }
             clearDir(updatesDir())
             val safeName = assetName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
             val destination = File(updatesDir(), safeName)
@@ -138,11 +137,12 @@ actual object AppUpdaterPlatform {
         }
     }
 
-    actual fun canInstallDownloadedUpdate(): Boolean = true
+    actual fun canInstallDownloadedUpdate(): Boolean = isSupported
 
     actual fun openInstallPermissionSettings() = Unit
 
     actual fun installDownloadedUpdate(path: String): Result<Unit> = runCatching {
+        check(isSupported) { "Lisyx desktop updates are not enabled." }
         val updateFile = File(path)
         check(updateFile.exists()) { runBlocking { getString(Res.string.updates_downloaded_file_missing) } }
 
@@ -151,7 +151,7 @@ actual object AppUpdaterPlatform {
     }
 
     private fun updatesDir(): File =
-        File(DesktopStorage.rootDir.resolve("updates").also { it.createDirectories() }.toUri())
+        File(DesktopStorage.rootDir.resolve("lisyx-updates").also { it.createDirectories() }.toUri())
 
     private fun clearDir(dirPath: File) {
         if (dirPath.exists() and dirPath.isDirectory) {

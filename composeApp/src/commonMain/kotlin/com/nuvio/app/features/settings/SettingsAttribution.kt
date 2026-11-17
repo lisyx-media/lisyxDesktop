@@ -14,8 +14,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.build.AppVersionPolicy
 import nuvio.composeapp.generated.resources.Res
-import nuvio.composeapp.generated.resources.compose_about_based_on_version_format
-import nuvio.composeapp.generated.resources.compose_about_made_with
 import nuvio.composeapp.generated.resources.compose_about_version_format
 import org.jetbrains.compose.resources.stringResource
 
@@ -29,21 +27,15 @@ internal fun SettingsAttribution(
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = if (isTablet) 20.dp else 16.dp),
     ) {
-        MemberBrandWordmark(
-            height = if (isTablet) 30.dp else 26.dp,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        )
-        Spacer(
-            modifier = Modifier.height(if (isTablet) 10.dp else 8.dp),
-        )
-
         Text(
-            text = stringResource(Res.string.compose_about_made_with),
+            text = "LISYX",
             modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            color = androidx.compose.ui.graphics.Color(0xFFE50914),
             textAlign = TextAlign.Center,
         )
+        Spacer(modifier = Modifier.height(if (isTablet) 10.dp else 8.dp))
         Text(
             text = stringResource(
                 Res.string.compose_about_version_format,
@@ -55,17 +47,5 @@ internal fun SettingsAttribution(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        AppVersionPolicy.basedOnVersionName?.let { basedOnVersionName ->
-            Text(
-                text = stringResource(
-                    Res.string.compose_about_based_on_version_format,
-                    basedOnVersionName,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
     }
 }

@@ -11,6 +11,9 @@ import com.nuvio.app.features.servers.serverMessage
 import com.nuvio.app.features.home.HomeCatalogSettingsRepository
 import com.nuvio.app.features.home.filterReleasedItems
 import com.nuvio.app.features.trakt.TraktPublicListSourceResolver
+import com.nuvio.app.features.tmdb.TmdbEntityMediaType
+import com.nuvio.app.features.tmdb.TmdbMetadataService
+import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -155,6 +158,13 @@ object CatalogRepository {
                         target = target,
                         page = requestedSkip.takeIf { it > 0 } ?: 1,
                     )
+
+                    is CatalogTarget.Tmdb -> TmdbMetadataService.fetchBrowseCatalogPage(
+                        mediaType = if (target.contentType == "series") TmdbEntityMediaType.TV else TmdbEntityMediaType.MOVIE,
+                        categoryId = target.categoryId,
+                        language = TmdbSettingsRepository.snapshot().language,
+                        page = requestedSkip.coerceAtLeast(1),
+                    ) ?: error(getString(Res.string.catalog_load_failed))
 
                     is CatalogTarget.Server -> ServerCatalog.page(target, skip = requestedSkip)
 

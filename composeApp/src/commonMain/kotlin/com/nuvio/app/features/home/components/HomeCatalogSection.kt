@@ -10,16 +10,15 @@ import com.nuvio.app.core.ui.NuvioShelfSection
 import com.nuvio.app.core.ui.NuvioViewAllPillSize
 import com.nuvio.app.core.ui.rememberPosterCardStyleUiState
 import com.nuvio.app.isDesktop
-import com.nuvio.app.features.home.HomeCatalogSection
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.stableKey
 import com.nuvio.app.features.watching.application.WatchingState
 
 @Composable
 fun HomeCatalogRowSection(
-    section: HomeCatalogSection,
+    title: String,
     modifier: Modifier = Modifier,
-    entries: List<MetaPreview> = section.items,
+    entries: List<MetaPreview>,
     watchedKeys: Set<String> = emptySet(),
     fullyWatchedSeriesKeys: Set<String> = emptySet(),
     sectionPadding: Dp? = null,
@@ -29,7 +28,7 @@ fun HomeCatalogRowSection(
 ) {
     if (sectionPadding != null) {
         HomeCatalogRowSectionContent(
-            section = section,
+            title = title,
             entries = entries,
             watchedKeys = watchedKeys,
             fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
@@ -42,7 +41,7 @@ fun HomeCatalogRowSection(
     } else {
         BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
             HomeCatalogRowSectionContent(
-                section = section,
+                title = title,
                 entries = entries,
                 watchedKeys = watchedKeys,
                 fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,
@@ -58,7 +57,7 @@ fun HomeCatalogRowSection(
 
 @Composable
 private fun HomeCatalogRowSectionContent(
-    section: HomeCatalogSection,
+    title: String,
     entries: List<MetaPreview>,
     watchedKeys: Set<String>,
     fullyWatchedSeriesKeys: Set<String>,
@@ -71,7 +70,7 @@ private fun HomeCatalogRowSectionContent(
     val posterCardStyle = rememberPosterCardStyleUiState()
 
     NuvioShelfSection(
-        title = section.title,
+        title = title,
         entries = entries,
         modifier = modifier,
         headerHorizontalPadding = sectionPadding,
@@ -83,6 +82,7 @@ private fun HomeCatalogRowSectionContent(
     ) { item ->
         HomePosterCard(
             item = item,
+            forcePoster = isDesktop,
             useLandscapeBackdropMode = posterCardStyle.catalogLandscapeModeEnabled,
             isWatched = WatchingState.isPosterWatched(
                 watchedKeys = watchedKeys,

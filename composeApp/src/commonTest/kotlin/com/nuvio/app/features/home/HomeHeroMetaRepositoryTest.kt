@@ -25,6 +25,9 @@ class HomeHeroMetaRepositoryTest {
                     id = "tt1",
                     type = "series",
                     name = "Show",
+                    logo = "https://image.tmdb.org/t/p/w500/logo-fr.png",
+                    background = "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
+                    description = "Résumé français",
                     imdbRating = "8.4",
                     genres = listOf("Crime"),
                     runtime = "58 min",
@@ -35,6 +38,9 @@ class HomeHeroMetaRepositoryTest {
             ),
         )
 
+        assertEquals("https://image.tmdb.org/t/p/w500/logo-fr.png", merged.logo)
+        assertEquals("https://image.tmdb.org/t/p/w1280/backdrop.jpg", merged.banner)
+        assertEquals("Résumé français", merged.description)
         assertEquals("8.4", merged.imdbRating)
         assertEquals(listOf("Crime"), merged.genres)
         assertEquals("58 min", merged.runtime)

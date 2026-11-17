@@ -1,0 +1,6 @@
+<resources>
+    <string name="lisy_prompt_title">Aucun serveur renseigné</string>
+    <string name="lisy_prompt_message">Aucun serveur IPTV n’est configuré. La lecture n’est donc pas possible pour le moment, mais vous pouvez parcourir les catalogues. Voulez-vous ajouter un serveur maintenant ?</string>
+    <string name="lisy_prompt_add">Ajouter</string>
+    <string name="lisy_prompt_later">Plus tard</string>
+</resources>

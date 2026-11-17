@@ -45,8 +45,8 @@ internal object HomeHeroMetaRepository {
     val metas: StateFlow<Map<String, HomeHeroMeta>> = _metas.asStateFlow()
 
     suspend fun load(items: List<MetaPreview>, ratingSettings: MdbListSettings?) {
-        val keys = items.mapTo(mutableSetOf(), MetaPreview::stableKey)
-        _metas.update { metas -> metas.filterKeys(keys::contains) }
+        // Home, Movies and Series can be mounted together; keep their artwork cached.
+        _metas.update { metas -> if (metas.size > 128) metas.entries.toList().takeLast(96).associate { it.toPair() } else metas }
         val permits = Semaphore(DETAILS_FETCH_CONCURRENCY)
         withContext(dispatcher) {
             items.forEach { item ->
@@ -115,6 +115,9 @@ internal object HomeHeroMetaRepository {
 internal fun MetaPreview.withHeroMeta(meta: HomeHeroMeta): MetaPreview {
     val details = meta.details
     return copy(
+        logo = details?.logo?.takeIf { it.isNotBlank() } ?: logo,
+        banner = details?.background?.takeIf { it.isNotBlank() } ?: banner,
+        description = details?.description?.takeIf { it.isNotBlank() } ?: description,
         genres = details?.genres?.takeIf { it.isNotEmpty() } ?: genres,
         imdbRating = details?.imdbRating?.takeIf { it.isNotBlank() } ?: imdbRating,
         runtime = details?.runtime?.takeIf { it.isNotBlank() } ?: runtime,

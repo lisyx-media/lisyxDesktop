@@ -57,6 +57,7 @@ fun TrailerPlayerPopup(
     errorMessage: String?,
     onDismiss: () -> Unit,
     onRetry: (() -> Unit)? = null,
+    onOpenInBrowser: (() -> Unit)? = null,
 ) {
     if (!visible) return
 
@@ -138,6 +139,7 @@ fun TrailerPlayerPopup(
                 isLoading = isLoading,
                 errorMessage = errorMessage,
                 onRetry = onRetry,
+                onOpenInBrowser = onOpenInBrowser,
                 modifier = Modifier.fillMaxSize(),
                 title = headerSubtitle.ifBlank { headerType },
                 onExitFullscreen = exitFullscreen,
@@ -220,6 +222,7 @@ fun TrailerPlayerPopup(
                 isLoading = isLoading,
                 errorMessage = errorMessage,
                 onRetry = onRetry,
+                onOpenInBrowser = onOpenInBrowser,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
@@ -228,6 +231,7 @@ fun TrailerPlayerPopup(
                 onToggleFullscreen = toggleFullscreen,
                 onEscapeFullscreen = dismissSheet,
             )
+
         }
     }
 }

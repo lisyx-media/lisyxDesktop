@@ -1,8 +1,12 @@
 package com.nuvio.app.features.tmdb
 
 import com.nuvio.app.isDesktop
+import com.nuvio.app.features.catalog.CatalogPage
+import com.nuvio.app.features.watchprogress.CurrentDateProvider
+import kotlin.time.Clock
 
 import co.touchlab.kermit.Logger
+import io.ktor.http.encodeURLParameter
 import com.nuvio.app.features.addons.httpGetText
 import com.nuvio.app.features.details.MetaCompany
 import com.nuvio.app.features.details.MetaDetails
@@ -15,6 +19,7 @@ import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.PosterShape
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -35,6 +40,134 @@ object TmdbMetadataService {
     private val log = Logger.withTag("TmdbMetadata")
     private val json = Json { ignoreUnknownKeys = true }
 
+    internal suspend fun fetchWeeklyTrending(
+        mediaType: TmdbEntityMediaType,
+        language: String,
+    ): List<MetaPreview> {
+        val items = fetchBrowseItems(
+            mediaType = mediaType,
+            language = normalizeTmdbLanguage(language),
+            endpoint = "trending/${mediaType.value}/week",
+        ).orEmpty()
+        log.d { "TMDB weekly trending (${mediaType.value}): ${items.size} titles" }
+        return items
+    }
+
+    internal suspend fun fetchSearchItems(
+        mediaType: TmdbEntityMediaType,
+        query: String,
+        language: String,
+    ): List<MetaPreview>? {
+        val normalizedLanguage = normalizeTmdbLanguage(language)
+        val response = fetch<TmdbDiscoverResponse>(
+            endpoint = "search/${mediaType.value}",
+            query = mapOf(
+                "query" to query.encodeURLParameter(),
+                "language" to normalizedLanguage,
+                "include_adult" to "false",
+            ),
+        ) ?: return null
+        return response.results.asSequence()
+            .filter { it.id > 0 && !it.adult }
+            .distinctBy { it.id }
+            .mapNotNull { mapEntityDiscoverResult(it, mediaType, normalizedLanguage, emptyMap(), requireArtwork = false) }
+            .toList()
+    }
+
+    private val browseRequests = Semaphore(4)
+    private val browseCacheLock = SynchronizedObject()
+    private val browseCache = mutableMapOf<String, Pair<Long, TmdbBrowseRows>>()
+
+    internal suspend fun fetchBrowseRows(
+        mediaType: TmdbEntityMediaType,
+        language: String,
+    ): TmdbBrowseRows = coroutineScope {
+        val normalizedLanguage = normalizeTmdbLanguage(language)
+        val today = CurrentDateProvider.todayIsoDate()
+        val cacheKey = "$mediaType:$normalizedLanguage:$today:${TmdbSettingsRepository.effectiveApiKey().hashCode()}"
+        val now = Clock.System.now().toEpochMilliseconds()
+        synchronized(browseCacheLock) { browseCache[cacheKey] }
+            ?.takeIf { now - it.first < 600_000L }?.let { return@coroutineScope it.second }
+        val responses = tmdbBrowseRequests(mediaType, today, normalizedLanguage).map { request ->
+            async {
+                browseRequests.withPermit {
+                    fetchBrowseItems(mediaType, normalizedLanguage, request.endpoint, request.query)
+                        ?.let { items -> TmdbBrowseRow(request.id, items) }
+                }
+            }
+        }.awaitAll()
+        TmdbBrowseRows(
+            rows = responses.filterNotNull().filter { it.items.isNotEmpty() },
+            hasFailures = responses.any { it == null },
+        ).also { result ->
+            if (!result.hasFailures) synchronized(browseCacheLock) {
+                if (browseCache.size > 8) browseCache.clear()
+                browseCache[cacheKey] = now to result
+            }
+            log.d { "TMDB browse (${mediaType.value}, $normalizedLanguage): ${result.rows.size} rows" }
+        }
+    }
+
+    internal suspend fun fetchBrowseCatalogPage(
+        mediaType: TmdbEntityMediaType,
+        categoryId: String,
+        language: String,
+        page: Int,
+    ): CatalogPage? {
+        val locale = normalizeTmdbLanguage(language)
+        val today = CurrentDateProvider.todayIsoDate()
+        val request = tmdbBrowseRequests(mediaType, today, locale).firstOrNull { it.id == categoryId } ?: return null
+        var nextPage: Int? = page
+        var scanned = 0
+        var rawItemCount = 0
+        val items = mutableListOf<MetaPreview>()
+        // Keep scrolling past pages whose results were all filtered out, including on initial load.
+        while (nextPage != null && items.isEmpty() && scanned < 10) {
+            val currentPage = nextPage
+            val response = browseRequests.withPermit {
+                fetch<TmdbDiscoverResponse>(
+                    request.endpoint,
+                    request.query + mapOf("language" to locale, "page" to currentPage.toString()),
+                )
+            } ?: return null
+            rawItemCount += response.results.size
+            for (result in response.results) {
+                if (!result.isBrowseCatalogEntry(mediaType, today)) continue
+                mapEntityDiscoverResult(result, mediaType, locale, emptyMap())?.let(items::add)
+            }
+            scanned++
+            nextPage = (currentPage + 1).takeIf {
+                response.results.isNotEmpty() && it <= minOf(500, response.totalPages ?: currentPage)
+            }
+        }
+        return CatalogPage(items, rawItemCount, nextPage)
+    }
+
+    private fun TmdbDiscoverResult.isBrowseCatalogEntry(mediaType: TmdbEntityMediaType, today: String): Boolean =
+        id > 0 && !adult && !posterPath.isNullOrBlank() &&
+            isReleasedTmdbTitle(if (mediaType == TmdbEntityMediaType.MOVIE) releaseDate else firstAirDate, today)
+
+    private suspend fun fetchBrowseItems(
+        mediaType: TmdbEntityMediaType,
+        language: String,
+        endpoint: String,
+        query: Map<String, String> = emptyMap(),
+    ): List<MetaPreview>? {
+        val today = CurrentDateProvider.todayIsoDate()
+        val items = linkedMapOf<Int, MetaPreview>()
+        // Trending/top-rated endpoints cannot filter dates server-side. Fill holes
+        // from subsequent pages after checking each title's actual release date.
+        for (page in 1..3) {
+            val response = fetch<TmdbDiscoverResponse>(endpoint, query + mapOf("language" to language, "page" to page.toString()))
+                ?: return if (items.isEmpty()) null else items.values.toList()
+            response.results.filter { it.isBrowseCatalogEntry(mediaType, today) }.forEach { result ->
+                mapEntityDiscoverResult(result, mediaType, language, emptyMap())?.let { items[result.id] = it }
+            }
+            if (items.size >= 20 || response.results.isEmpty() || page >= (response.totalPages ?: page)) break
+        }
+        return items.values.take(20)
+    }
+
     fun cachedOriginalTitle(tmdbId: String, type: String): String? {
         val mediaType = TmdbService.normalizeMediaType(type)
         val prefix = "$tmdbId:$mediaType:"
@@ -45,6 +178,7 @@ object TmdbMetadataService {
 
     private val enrichmentCache = mutableMapOf<String, TmdbEnrichment>()
     private val enrichmentCacheLock = SynchronizedObject()
+    private val episodeRequests = Semaphore(4)
     private val episodeCache = mutableMapOf<String, Map<Pair<Int, Int>, TmdbEpisodeEnrichment>>()
     private val moreLikeThisCache = mutableMapOf<String, List<MetaPreview>>()
     private val collectionCache = mutableMapOf<String, Pair<String?, List<MetaPreview>>>()
@@ -89,7 +223,7 @@ object TmdbMetadataService {
         preferCrewCredits: Boolean? = null,
     ): PersonDetail? = withContext(Dispatchers.Default) {
         val settings = TmdbSettingsRepository.snapshot()
-        if (!settings.enabled) return@withContext null
+        if (TmdbSettingsRepository.effectiveApiKey().isBlank()) return@withContext null
         val language = normalizeTmdbLanguage(settings.language)
         val cacheKey = "$personId:${preferCrewCredits?.toString() ?: "auto"}:$language"
         personCache[cacheKey]?.let { return@withContext it }
@@ -410,7 +544,7 @@ object TmdbMetadataService {
         fallbackName: String? = null,
     ): TmdbEntityBrowseData? = withContext(Dispatchers.Default) {
         val settings = TmdbSettingsRepository.snapshot()
-        if (!settings.enabled) return@withContext null
+        if (TmdbSettingsRepository.effectiveApiKey().isBlank()) return@withContext null
         val language = normalizeTmdbLanguage(settings.language)
         val normalizedSourceType = normalizeEntitySourceType(sourceType)
         val cacheKey = "${entityKind.routeValue}:$entityId:$normalizedSourceType:$language"
@@ -643,6 +777,7 @@ object TmdbMetadataService {
         mediaType: TmdbEntityMediaType,
         preferredLanguage: String,
         englishTitlesById: Map<Int, String>,
+        requireArtwork: Boolean = true,
     ): MetaPreview? {
         val title = resolvePersonName(
             localizedName = result.title ?: result.name,
@@ -653,7 +788,7 @@ object TmdbMetadataService {
 
         val poster = buildImageUrl(result.posterPath, "w500")
             ?: buildImageUrl(result.backdropPath, "w780")
-            ?: return null
+        if (requireArtwork && poster == null) return null
         val releaseInfo = when (mediaType) {
             TmdbEntityMediaType.MOVIE -> result.releaseDate?.take(4)
             TmdbEntityMediaType.TV -> result.firstAirDate?.take(4)
@@ -667,6 +802,9 @@ object TmdbMetadataService {
             logo = null,
             description = result.overview?.takeIf { it.isNotBlank() },
             releaseInfo = releaseInfo,
+            rawReleaseDate = if (mediaType == TmdbEntityMediaType.MOVIE) result.releaseDate else result.firstAirDate,
+            imdbRating = result.voteAverage?.takeIf { it > 0 }?.formatRating(),
+            voteCount = result.voteCount,
         )
     }
 
@@ -763,6 +901,43 @@ object TmdbMetadataService {
             tmdbId = tmdbId,
             enrichment = enrichment,
         )
+    }
+
+    internal suspend fun withStandaloneEpisodes(meta: MetaDetails): MetaDetails {
+        if (normalizeMetaType(meta.type) != "tv" || meta.videos.isNotEmpty()) return meta
+        val tmdbId = meta.id.removePrefix("tmdb:").toIntOrNull()?.takeIf { it > 0 } ?: return meta
+        if (!meta.id.startsWith("tmdb:")) return meta
+
+        val language = normalizeTmdbLanguage(TmdbSettingsRepository.snapshot().language)
+        val cacheKey = "$tmdbId:tv:$language"
+        val indexedSeasons = synchronized(enrichmentCacheLock) { enrichmentCache[cacheKey]?.seasonNumbers }
+        val seasons = indexedSeasons?.takeIf { it.isNotEmpty() } ?: fetch<TmdbDetailsResponse>(
+            endpoint = "tv/$tmdbId",
+            query = mapOf("language" to language),
+        )?.availableSeasonNumbers().orEmpty()
+        val episodes = fetchEpisodeEnrichment(tmdbId.toString(), seasons, language)
+        if (episodes.isEmpty()) return meta
+
+        val videos = episodes.map { (index, episode) ->
+            val (season, number) = index
+            MetaVideo(
+                id = "${meta.id}:$season:$number",
+                title = episode.title.orEmpty(),
+                released = episode.airDate,
+                thumbnail = episode.thumbnail,
+                seasonPoster = episode.seasonPoster,
+                season = season,
+                episode = number,
+                overview = episode.overview,
+                runtime = episode.runtimeMinutes,
+                rating = episode.rating,
+            )
+        }
+        val posters = videos.mapNotNull { video ->
+            val season = video.season ?: return@mapNotNull null
+            video.seasonPoster?.let { season to it }
+        }.toMap()
+        return meta.copy(videos = videos, seasonPosters = meta.seasonPosters + posters)
     }
 
     internal fun buildStandaloneMeta(
@@ -1049,6 +1224,7 @@ object TmdbMetadataService {
         val enrichment = TmdbEnrichment(
             localizedTitle = localizedTitle,
             originalTitle = details.originalTitle ?: details.originalName,
+            seasonNumbers = details.availableSeasonNumbers(),
             description = description,
             genres = genres,
             backdrop = buildImageUrl(details.backdropPath, "w1280"),
@@ -1158,15 +1334,17 @@ object TmdbMetadataService {
         if (normalizedSeasons.isEmpty()) return@withContext emptyMap()
 
         val cacheKey = "$numericId:${normalizedSeasons.joinToString(",")}:$normalizedLanguage"
-        episodeCache[cacheKey]?.let { return@withContext it }
+        synchronized(enrichmentCacheLock) { episodeCache[cacheKey] }?.let { return@withContext it }
 
         val pairs = coroutineScope {
             normalizedSeasons.map { season ->
                 async {
-                    val details = fetch<TmdbSeasonDetailsResponse>(
-                        endpoint = "tv/$numericId/season/$season",
-                        query = mapOf("language" to normalizedLanguage),
-                    ) ?: return@async emptyMap()
+                    val details = episodeRequests.withPermit {
+                        fetch<TmdbSeasonDetailsResponse>(
+                            endpoint = "tv/$numericId/season/$season",
+                            query = mapOf("language" to normalizedLanguage),
+                        )
+                    } ?: return@async emptyMap()
 
                     details.episodes
                         .mapNotNull { episode ->
@@ -1178,6 +1356,7 @@ object TmdbMetadataService {
                                 seasonPoster = buildImageUrl(details.posterPath, "w500"),
                                 airDate = episode.airDate?.trim()?.takeIf(String::isNotBlank),
                                 runtimeMinutes = episode.runtime,
+                                rating = episode.voteAverage?.takeIf { it > 0 },
                             )
                         }
                         .toMap()
@@ -1186,8 +1365,11 @@ object TmdbMetadataService {
         }
 
         val merged = pairs.fold(emptyMap<Pair<Int, Int>, TmdbEpisodeEnrichment>()) { acc, value -> acc + value }
-        if (merged.isNotEmpty()) {
-            episodeCache[cacheKey] = merged
+        if (merged.isNotEmpty() && pairs.all { it.isNotEmpty() }) {
+            synchronized(enrichmentCacheLock) {
+                if (episodeCache.size >= 120) episodeCache.remove(episodeCache.keys.first())
+                episodeCache[cacheKey] = merged
+            }
         }
         merged
     }
@@ -1201,7 +1383,8 @@ object TmdbMetadataService {
         return runCatching {
             json.decodeFromString<T>(httpGetText(url))
         }.onFailure { error ->
-            log.w { "TMDB request failed for $endpoint: ${error.message}" }
+            if (error is CancellationException) throw error
+            log.w { "TMDB request failed for $endpoint" }
         }.getOrNull()
     }
 
@@ -1415,6 +1598,7 @@ object TmdbMetadataService {
 }
 
 internal data class TmdbEnrichment(
+    val seasonNumbers: List<Int> = emptyList(),
     val originalTitle: String? = null,
     val localizedTitle: String?,
     val description: String?,
@@ -1478,6 +1662,7 @@ internal data class TmdbEpisodeEnrichment(
     val seasonPoster: String? = null,
     val airDate: String?,
     val runtimeMinutes: Int?,
+    val rating: Double? = null,
 )
 
 private fun normalizeMetaType(type: String): String =
@@ -1859,6 +2044,17 @@ private data class TmdbDetailsResponse(
     val networks: List<TmdbCompany> = emptyList(),
     @SerialName("belongs_to_collection") val belongsToCollection: TmdbCollectionRef? = null,
     @SerialName("number_of_seasons") val numberOfSeasons: Int? = null,
+    val seasons: List<TmdbSeasonSummary> = emptyList(),
+) {
+    fun availableSeasonNumbers(): List<Int> = seasons.mapNotNull {
+        it.seasonNumber?.takeIf { number -> number >= 0 && (it.episodeCount ?: 1) > 0 }
+    }.distinct().sorted().ifEmpty { (1..(numberOfSeasons ?: 0).coerceIn(0, 250)).toList() }
+}
+
+@Serializable
+private data class TmdbSeasonSummary(
+    @SerialName("season_number") val seasonNumber: Int? = null,
+    @SerialName("episode_count") val episodeCount: Int? = null,
 )
 
 @Serializable
@@ -2091,6 +2287,7 @@ private data class TmdbEpisodeResponse(
     @SerialName("air_date") val airDate: String? = null,
     val runtime: Int? = null,
     @SerialName("episode_number") val episodeNumber: Int? = null,
+    @SerialName("vote_average") val voteAverage: Double? = null,
 )
 
 // ─── Person Detail Models ───
@@ -2172,6 +2369,16 @@ enum class TmdbEntityMediaType(val value: String) {
     TV("tv"),
 }
 
+internal data class TmdbBrowseRow(
+    val id: String,
+    val items: List<MetaPreview>,
+)
+
+internal data class TmdbBrowseRows(
+    val rows: List<TmdbBrowseRow>,
+    val hasFailures: Boolean,
+)
+
 enum class TmdbEntityRailType(val value: String) {
     POPULAR("popular"),
     TOP_RATED("top_rated"),
@@ -2239,6 +2446,7 @@ private data class TmdbDiscoverResponse(
 @Serializable
 internal data class TmdbDiscoverResult(
     val id: Int,
+    val adult: Boolean = false,
     val title: String? = null,
     val name: String? = null,
     @SerialName("original_title") val originalTitle: String? = null,

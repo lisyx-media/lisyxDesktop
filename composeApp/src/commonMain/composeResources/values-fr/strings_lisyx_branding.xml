@@ -1,0 +1,5 @@
+<resources>
+    <string name="lisyx_credits_title">Lisyx</string>
+    <string name="lisyx_credits_body">Lisyx est un fork de NuvioDesktop, lui-même issu de NuvioMobile. Les auteurs et contributeurs de Nuvio, dont Tapframe, conservent le crédit de leur travail. Code source et licence du fork disponibles sur GitHub.</string>
+    <string name="lisyx_credits_license">GNU GPL v3</string>
+</resources>

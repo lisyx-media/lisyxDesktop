@@ -1,0 +1,27 @@
+<resources>
+    <string name="lisyx_catalog_popular_movies">Popular movies</string>
+    <string name="lisyx_catalog_popular_series">Popular series</string>
+    <string name="lisyx_catalog_acclaimed_movies">Critically acclaimed movies</string>
+    <string name="lisyx_catalog_acclaimed_series">Critically acclaimed series</string>
+    <string name="lisyx_catalog_airing_today">Airing today</string>
+    <string name="lisyx_catalog_new_movies">Now playing</string>
+    <string name="lisyx_catalog_new_series">New and returning series</string>
+    <string name="lisyx_catalog_year_movies">Movies this year</string>
+    <string name="lisyx_catalog_year_series">Series this year</string>
+    <string name="lisyx_catalog_language_movies">Movies in your language</string>
+    <string name="lisyx_catalog_language_series">Series in your language</string>
+    <string name="lisyx_catalog_netflix_movies">Movies on Netflix</string>
+    <string name="lisyx_catalog_netflix_series">Series on Netflix</string>
+    <string name="lisyx_catalog_disney_movies">Movies on Disney+</string>
+    <string name="lisyx_catalog_disney_series">Series on Disney+</string>
+    <string name="lisyx_catalog_prime_movies">Movies on Prime Video</string>
+    <string name="lisyx_catalog_prime_series">Series on Prime Video</string>
+    <string name="lisyx_catalog_international_movies">International cinema</string>
+    <string name="lisyx_catalog_international_series">International series</string>
+    <string name="lisyx_catalog_limited_series">Limited series</string>
+    <string name="lisyx_catalog_documentary_movies">Documentaries</string>
+    <string name="lisyx_catalog_documentary_series">Documentary series</string>
+    <string name="lisyx_catalog_family_movies">Family movies</string>
+    <string name="lisyx_catalog_family_series">Family series</string>
+    <string name="lisyx_catalog_independent_movies">Independent cinema</string>
+</resources>

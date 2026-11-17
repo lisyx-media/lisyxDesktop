@@ -3,7 +3,15 @@ package com.nuvio.app.features.trailer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Path
+import nuvio.composeapp.generated.resources.lisyx_trailer_open_youtube
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -54,6 +62,7 @@ internal fun TrailerPlayerControls(
     canControlPlayback: Boolean,
     title: String,
     onExitFullscreen: (() -> Unit)?,
+    onOpenInBrowser: (() -> Unit)? = null,
 ) {
     var controlsVisible by remember { mutableStateOf(true) }
     val isScrubbing = state.scrubPositionMs != null
@@ -104,6 +113,7 @@ internal fun TrailerPlayerControls(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        if (onOpenInBrowser != null) TrailerYouTubeButton(onOpenInBrowser)
                         PlayerHeaderIconButton(
                             icon = Icons.Rounded.FullscreenExit,
                             contentDescription = stringResource(Res.string.trailer_exit_fullscreen),
@@ -111,6 +121,11 @@ internal fun TrailerPlayerControls(
                             iconSize = metrics.headerIconSize,
                             onClick = { onExitFullscreen?.invoke() },
                         )
+                    }
+                }
+                if (!fullscreen && onOpenInBrowser != null) {
+                    Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                        TrailerYouTubeButton(onOpenInBrowser)
                     }
                 }
                 if (canControlPlayback) {
@@ -156,5 +171,24 @@ internal fun TrailerPlayerControls(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun TrailerYouTubeButton(onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Canvas(Modifier.size(width = 23.dp, height = 16.dp)) {
+            drawRoundRect(Color(0xFFFF0033), cornerRadius = CornerRadius(size.height * .24f))
+            val triangle = Path().apply {
+                moveTo(size.width * .41f, size.height * .24f)
+                lineTo(size.width * .41f, size.height * .76f)
+                lineTo(size.width * .70f, size.height * .50f)
+                close()
+            }
+            drawPath(triangle, Color.White)
+        }
+        Spacer(Modifier.width(7.dp))
+        Text(text = stringResource(Res.string.lisyx_trailer_open_youtube), color = Color.White)
     }
 }

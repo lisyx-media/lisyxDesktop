@@ -11,6 +11,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -28,6 +30,10 @@ import com.nuvio.app.features.discordrpc.DiscordPresenceManager
 import com.nuvio.app.features.p2p.P2pStreamingEngine
 import com.nuvio.app.features.plugins.configureDesktopQuickJsLibrary
 import com.nuvio.app.features.player.PlatformPlayerSurface
+import com.nuvio.app.features.trailer.TrailerPlayer
+import com.nuvio.app.features.trailer.TrailerPlaybackResolver
+import com.nuvio.app.features.trailer.TrailerPlaybackSource
+import com.nuvio.app.features.trailer.TrailerPlaybackState
 import com.nuvio.app.features.player.desktop.DesktopAppFullscreenController
 import com.nuvio.app.features.player.desktop.DesktopHostOs
 import com.nuvio.app.features.player.desktop.DesktopWindowGeometry
@@ -134,7 +140,7 @@ fun main(args: Array<String>) {
 
         SwingWindow(
             onCloseRequest = closeApplication,
-            title = if (smokePlayerUrl == null) "Nuvio" else "Nuvio Player Smoke",
+            title = if (smokePlayerUrl == null) "Lisyx" else "Lisyx Player Smoke",
             state = windowState,
             icon = painterResource(appIconState.selected.transparentPreviewResource),
             init = ::configureMacosWindowBeforePeer,
@@ -232,24 +238,66 @@ fun main(args: Array<String>) {
                     ProvideDesktopWindowInsets(
                         isFullscreen = windowState.placement == WindowPlacement.Fullscreen,
                     ) {
-                        MiddleClickAutoscroll { App() }
+                        MiddleClickAutoscroll {
+                            Box(Modifier.fillMaxSize()) {
+                                App()
+                                LisyxLaunchIntro()
+                            }
+                        }
                     }
                 }
             } else {
                 // The player surface reads LocalNuvioPlatformDensity, which only
                 // NuvioTheme provides — the bare smoke harness must supply it too.
                 NuvioTheme {
-                    PlatformPlayerSurface(
-                        sourceUrl = smokePlayerUrl,
-                        modifier = Modifier.fillMaxSize(),
-                        onControllerReady = {},
-                        onSnapshot = {},
-                        onError = {},
-                    )
+                    if (smokePlayerUrl.startsWith("https://www.youtube.com/watch?v=")) {
+                        TrailerSmokePlayer(smokePlayerUrl, closeApplication)
+                    } else {
+                        PlatformPlayerSurface(
+                            sourceUrl = smokePlayerUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            onControllerReady = {},
+                            onSnapshot = {},
+                            onError = {},
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+@androidx.compose.runtime.Composable
+private fun TrailerSmokePlayer(url: String, close: () -> Unit) {
+    val state = remember { TrailerPlaybackState() }
+    var source by remember { mutableStateOf<TrailerPlaybackSource?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    LaunchedEffect(url) {
+        source = kotlinx.coroutines.withTimeoutOrNull(15_000) {
+            TrailerPlaybackResolver.resolveFromYouTubeUrl(url)
+        }
+        loading = false
+        println("Trailer smoke: resolved=${source != null}")
+    }
+    LaunchedEffect(state) {
+        snapshotFlow { state.snapshot.positionMs > 2_000 }.collect { playing ->
+            if (playing) println("Trailer smoke: playback reached ${state.snapshot.positionMs} ms")
+        }
+    }
+    LaunchedEffect(state.error) {
+        state.error?.let { println("Trailer smoke: player error") }
+    }
+    TrailerPlayer(
+        source = source,
+        state = state,
+        isLoading = loading,
+        errorMessage = if (!loading && source == null) "Trailer unavailable" else null,
+        onRetry = null,
+        modifier = Modifier.fillMaxSize(),
+        title = "Lisyx",
+        onExitFullscreen = close,
+        onOpenInBrowser = { Desktop.getDesktop().browse(java.net.URI(url)) },
+    )
 }
 
 private fun configureDesktopChrome() {

@@ -80,6 +80,8 @@ internal fun LazyListScope.settingsRootContent(
                         )
                     }
                     SettingsCategory.Services -> {
+                        SettingsPageRow(SettingsPage.Lisy, Res.string.lisy_settings_description, isTablet, onPageClick)
+                        SettingsGroupDivider(isTablet = isTablet)
                         SettingsPageRow(
                             page = SettingsPage.Integrations,
                             description = Res.string.compose_settings_root_integrations_description,

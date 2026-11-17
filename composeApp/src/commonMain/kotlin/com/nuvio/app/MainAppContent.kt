@@ -435,6 +435,7 @@ internal fun MainAppContent(
             }
             AppScreenTab.Library -> libraryScrollToTopRequests.tryEmit(Unit)
             AppScreenTab.Settings -> settingsRootActionRequests.tryEmit(Unit)
+            AppScreenTab.Films, AppScreenTab.Series -> Unit
         }
     }
 
@@ -2177,6 +2178,16 @@ internal fun MainAppContent(
                     .zIndex(15f),
             )
 
+            MissingLisyServerPrompt(
+                profileId = activePlaybackProfileId,
+                enabled = isDesktop && currentRoute is TabsRoute && selectedTab == AppScreenTab.Home &&
+                    !launchOverlayState.currentState && !launchOverlayState.targetState,
+                onAddServer = {
+                    requestedSettingsPageName = "Lisy"
+                    activateTab(AppScreenTab.Settings)
+                },
+            )
+
             NuvioToastHost(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -2190,6 +2201,6 @@ internal fun MainAppContent(
 private fun AppRoute?.drawsUnderVerticalBar(selectedTab: AppScreenTab): Boolean =
     when (this) {
         is DetailRoute, is StreamRoute, is PlayerRoute -> true
-        is TabsRoute -> selectedTab == AppScreenTab.Home || selectedTab == AppScreenTab.Library
+        is TabsRoute -> selectedTab in setOf(AppScreenTab.Home, AppScreenTab.Films, AppScreenTab.Series, AppScreenTab.Library)
         else -> false
     }

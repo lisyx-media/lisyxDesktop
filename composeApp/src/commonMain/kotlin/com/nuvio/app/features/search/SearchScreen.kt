@@ -73,6 +73,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import com.nuvio.app.features.tmdb.TmdbSettingsRepository
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.action_retry
 import nuvio.composeapp.generated.resources.compose_nav_search
@@ -131,6 +132,10 @@ fun SearchScreen(
         HomeCatalogSettingsRepository.snapshot()
         HomeCatalogSettingsRepository.uiState
     }.collectAsStateWithLifecycle()
+    val tmdbSettings by remember {
+        TmdbSettingsRepository.snapshot()
+        TmdbSettingsRepository.uiState
+    }.collectAsStateWithLifecycle()
     val recentSearches by SearchHistoryRepository.uiState.collectAsStateWithLifecycle()
     val watchedUiState by WatchedRepository.uiState.collectAsStateWithLifecycle()
     val fullyWatchedSeriesKeys by WatchedRepository.fullyWatchedSeriesKeys.collectAsStateWithLifecycle()
@@ -156,12 +161,12 @@ fun SearchScreen(
     }
     val addonManifestsLoading = addonsUiState.addons.hasPendingEnabledManifests()
 
-    ScreenActivityEffect(addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent) { screenActive ->
+    ScreenActivityEffect(addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent, tmdbSettings.language, tmdbSettings.apiKey) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
         SearchRepository.refreshDiscover(addonsUiState.addons)
     }
 
-    ScreenActivityEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent) { screenActive ->
+    ScreenActivityEffect(query, addonRefreshKey, homeCatalogSettingsUiState.hideUnreleasedContent, tmdbSettings.language, tmdbSettings.apiKey) { screenActive ->
         if (!screenActive) return@ScreenActivityEffect
         val normalizedQuery = query.trim()
         if (normalizedQuery.isBlank()) {
@@ -382,13 +387,12 @@ fun SearchScreen(
                                         NetworkStatusRepository.requestRefresh(force = true)
                                         if (addonsUiState.addons.firstEnabledManifestError() != null) {
                                             AddonRepository.refreshAll()
-                                        } else {
-                                            SearchRepository.search(
-                                                query = normalizedQuery,
-                                                addons = addonsUiState.addons,
-                                                forceRefresh = true,
-                                            )
                                         }
+                                        SearchRepository.search(
+                                            query = normalizedQuery,
+                                            addons = addonsUiState.addons,
+                                            forceRefresh = true,
+                                        )
                                     }
                                 },
                                 modifier = Modifier.padding(horizontal = homeSectionPadding),
@@ -403,7 +407,8 @@ fun SearchScreen(
                         ) { keyedSection ->
                             val section = keyedSection.value
                             HomeCatalogRowSection(
-                                section = section,
+                                title = section.title,
+                                entries = section.items,
                                 modifier = Modifier.padding(bottom = 12.dp),
                                 watchedKeys = watchedUiState.watchedKeys,
                                 fullyWatchedSeriesKeys = fullyWatchedSeriesKeys,

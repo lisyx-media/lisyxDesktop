@@ -15,7 +15,7 @@ object TmdbSettingsRepository {
 
     private var enabled = false
     private var apiKey = ""
-    private var language = "en"
+    private var language = defaultTmdbLanguage
     private var useTrailers = true
     private var useArtwork = true
     private var useBasicInfo = true
@@ -64,11 +64,12 @@ object TmdbSettingsRepository {
 
     fun setLanguage(value: String) {
         ensureLoaded()
-        val normalized = normalizeLanguage(value)
+        val normalized = normalizeLanguage(value).ifBlank { defaultTmdbLanguage }
         if (language == normalized) return
         language = normalized
         publish()
         TmdbSettingsStorage.saveLanguage(normalized)
+        invalidateMetadata()
     }
 
     fun setUseTrailers(value: Boolean) = setBoolean(
@@ -164,11 +165,11 @@ object TmdbSettingsRepository {
     private fun loadFromDisk() {
         val wasLoaded = hasLoaded
         val previousApiKey = apiKey
+        val previousLanguage = language
         hasLoaded = true
         enabled = TmdbSettingsStorage.loadEnabled() ?: false
         apiKey = TmdbSettingsStorage.loadApiKey()?.trim().orEmpty()
-        val storedLanguage = TmdbSettingsStorage.loadLanguage()
-        language = if (storedLanguage == null) "en" else normalizeLanguage(storedLanguage)
+        language = normalizeLanguage(TmdbSettingsStorage.loadLanguage()).ifBlank { defaultTmdbLanguage }
         useTrailers = TmdbSettingsStorage.loadUseTrailers() ?: true
         useArtwork = TmdbSettingsStorage.loadUseArtwork() ?: true
         useBasicInfo = TmdbSettingsStorage.loadUseBasicInfo() ?: true
@@ -181,7 +182,7 @@ object TmdbSettingsRepository {
         useMoreLikeThis = TmdbSettingsStorage.loadUseMoreLikeThis() ?: true
         useCollections = TmdbSettingsStorage.loadUseCollections() ?: true
         publish()
-        if (wasLoaded && previousApiKey != apiKey) {
+        if (wasLoaded && (previousApiKey != apiKey || previousLanguage != language)) {
             invalidateMetadata()
         }
     }

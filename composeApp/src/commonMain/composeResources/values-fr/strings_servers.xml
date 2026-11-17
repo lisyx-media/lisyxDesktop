@@ -39,6 +39,13 @@
     <string name="servers_error_forbidden">Cet utilisateur n’a pas accès.</string>
     <string name="servers_error_failed">Impossible de se connecter au serveur.</string>
     <string name="home_empty_no_sources_title">Aucune source de contenu</string>
+    <string name="home_discovery_trending_movies">Films tendance</string>
+    <string name="home_discovery_trending_series">Séries tendance</string>
+    <string name="home_discovery_unavailable_title">Le catalogue est indisponible</string>
+    <string name="home_discovery_unavailable_message">Le catalogue TMDB est temporairement indisponible. Réessayez dans un instant.</string>
+    <string name="home_discovery_add_source_title">Regarder avec vos sources</string>
+    <string name="home_discovery_add_source_message">Ajoutez une source pour trouver les flux disponibles pour les titres que vous découvrez.</string>
+    <string name="home_discovery_add_source_action">Ajouter une source</string>
     <string name="home_empty_no_sources_message">Ajoutez un addon ou connectez un serveur multimédia pour voir les catalogues à l’accueil.</string>
     <string name="servers_failure_auth">Reconnectez-vous à ce serveur dans les paramètres.</string>
     <string name="servers_failure_unreachable">Le serveur est indisponible.</string>

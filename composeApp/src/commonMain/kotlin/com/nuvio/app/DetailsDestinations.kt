@@ -5,19 +5,16 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import com.nuvio.app.features.details.MetaDetailsScreen
 import com.nuvio.app.features.details.PersonDetailScreen
 import com.nuvio.app.features.details.TmdbEntityBrowseScreen
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.tmdb.TmdbEntityKind
-import com.nuvio.app.features.tmdb.TmdbService
 import com.nuvio.app.navigation.DetailRoute
 import com.nuvio.app.navigation.EntityBrowseRoute
 import com.nuvio.app.navigation.NuvioNavigator
 import com.nuvio.app.navigation.PersonDetailRoute
-import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.Res
 import nuvio.composeapp.generated.resources.person_role_creator
 import nuvio.composeapp.generated.resources.person_role_director
@@ -42,26 +39,8 @@ internal typealias ContentPlayAction = (
 ) -> Unit
 
 @Composable
-internal fun rememberOpenMeta(navController: NuvioNavigator): (MetaPreview) -> Unit {
-    val scope = rememberCoroutineScope()
-    return { preview ->
-        scope.launch {
-            val resolvedId = if (preview.id.startsWith("tmdb:")) {
-                val tmdbId = preview.id.removePrefix("tmdb:").toIntOrNull()
-                val resolved = tmdbId?.let {
-                    TmdbService.tmdbToImdb(
-                        tmdbId = it,
-                        mediaType = preview.type,
-                    )
-                } ?: preview.id
-                resolved
-            } else {
-                preview.id
-            }
-            navController.openPreview(preview.copy(id = resolvedId))
-        }
-    }
-}
+internal fun rememberOpenMeta(navController: NuvioNavigator): (MetaPreview) -> Unit =
+    androidx.compose.runtime.remember(navController) { { preview -> navController.openPreview(preview) } }
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable

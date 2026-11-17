@@ -51,6 +51,8 @@ import com.nuvio.app.core.ui.NuvioLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import com.nuvio.app.features.tmdb.TmdbMetadataService
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -187,6 +189,8 @@ import com.nuvio.app.features.watching.application.WatchingState
 import com.nuvio.app.isDesktop
 import com.kmpalette.rememberDominantColorState
 import com.kmpalette.extensions.painter.rememberPainterDominantColorState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
@@ -241,7 +245,14 @@ fun MetaDetailsScreen(
         shuffleWasInactive = !active
     }
     val uiState by MetaDetailsRepository.uiState.collectAsStateWithLifecycle()
-    val displayedMeta = uiState.meta?.takeIf { it.type == type && it.id == id }
+    val baseMeta = uiState.meta?.takeIf { it.type == type && it.id == id }
+    val tmdbMeta by produceState<MetaDetails?>(null, baseMeta) {
+        value = baseMeta
+        if (baseMeta != null && baseMeta.videos.isEmpty()) {
+            value = TmdbMetadataService.withStandaloneEpisodes(baseMeta)
+        }
+    }
+    val displayedMeta = tmdbMeta?.takeIf { it.type == type && it.id == id } ?: baseMeta
         ?: MetaDetailsRepository.peek(type, id)
     val metaScreenSettingsUiState by remember {
         MetaScreenSettingsRepository.ensureLoaded()
@@ -812,9 +823,14 @@ fun MetaDetailsScreen(
                                 trailerRequestToken += 1
                                 val currentRequestToken = trailerRequestToken
                                 trailerScope.launch {
-                                    val resolvedSource = runCatching {
-                                        TrailerPlaybackResolver.resolveFromYouTubeUrl(youtubeUrl)
-                                    }.getOrNull()
+                                    val resolvedSource = try {
+                                        withTimeoutOrNull(12_000) {
+                                            TrailerPlaybackResolver.resolveFromYouTubeUrl(youtubeUrl)
+                                        }
+                                    } catch (error: Exception) {
+                                        if (error is CancellationException) throw error
+                                        null
+                                    }
                                     if (currentRequestToken != trailerRequestToken) {
                                         return@launch
                                     }
@@ -1849,6 +1865,9 @@ fun MetaDetailsScreen(
                                 },
                                 onRetry = selectedTrailer?.let { trailer ->
                                     { resolveTrailer(trailer) }
+                                },
+                                onOpenInBrowser = selectedTrailer?.takeIf { it.site.equals("YouTube", ignoreCase = true) }?.let { trailer ->
+                                    { runCatching { uriHandler.openUri(trailer.youtubePlaybackUrl()) }; Unit }
                                 },
                             )
                         }

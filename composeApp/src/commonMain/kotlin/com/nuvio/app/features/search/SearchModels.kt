@@ -3,6 +3,7 @@ package com.nuvio.app.features.search
 import com.nuvio.app.features.catalog.CatalogTarget
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.home.HomeCatalogSection
+import com.nuvio.app.features.tmdb.TmdbEntityMediaType
 
 enum class SearchEmptyStateReason {
     NoActiveAddons,
@@ -36,6 +37,7 @@ data class DiscoverCatalogOption(
     val genreRequired: Boolean = false,
     val supportsPagination: Boolean = false,
     val server: CatalogTarget.Server? = null,
+    val tmdb: TmdbEntityMediaType? = null,
 )
 
 data class DiscoverUiState(

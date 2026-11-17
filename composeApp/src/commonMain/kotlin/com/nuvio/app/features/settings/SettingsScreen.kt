@@ -626,6 +626,7 @@ private fun MobileSettingsScreen(
             }
 
             when (page) {
+                SettingsPage.Lisy -> item { LisySettingsContent(isTablet = false) }
                 SettingsPage.Root -> {
                     settingsSearchRootContent(
                         query = settingsSearchQuery,
@@ -1036,6 +1037,7 @@ private fun TabletSettingsScreen(
                         }
                     }
                     when (page) {
+                        SettingsPage.Lisy -> item { LisySettingsContent(isTablet = true) }
                         SettingsPage.Root -> {
                             settingsSearchRootContent(
                                 query = settingsSearchQuery,

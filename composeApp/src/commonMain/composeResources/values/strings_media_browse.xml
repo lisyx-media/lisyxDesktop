@@ -1,0 +1,7 @@
+<resources>
+    <string name="media_browse_all">All genres</string>
+    <string name="media_browse_action_adventure">Action and adventure</string>
+    <string name="media_browse_empty">No titles found</string>
+    <string name="media_browse_partial_error">Some categories are unavailable</string>
+    <string name="media_browse_refresh_message">Try refreshing the TMDB catalog.</string>
+</resources>

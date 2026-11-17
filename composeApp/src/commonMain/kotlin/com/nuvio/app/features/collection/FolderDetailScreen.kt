@@ -524,7 +524,7 @@ private fun RowsContent(
             ) { keyedSection ->
                 val section = keyedSection.value
                 HomeCatalogRowSection(
-                    section = section,
+                    title = section.title,
                     entries = if (isDesktop) {
                         // Match desktop home rows: the lazy row exposes every fetched item so the
                         // catalog remains horizontally scrollable without opening the expanded view.

@@ -78,16 +78,16 @@ class SearchRequestStateTest {
 
         try {
             SearchRepository.reset()
-            SearchRepository.search(query = "movie", addons = listOf(pendingAddon))
-            SearchRepository.refreshDiscover(addons = listOf(pendingAddon))
+            SearchRepository.search(query = "movie", addons = listOf(pendingAddon), includeTmdb = false)
+            SearchRepository.refreshDiscover(addons = listOf(pendingAddon), includeTmdb = false)
 
             assertTrue(SearchRepository.uiState.value.isLoading)
             assertEquals(null, SearchRepository.uiState.value.emptyStateReason)
             assertTrue(SearchRepository.discoverUiState.value.isLoading)
             assertEquals(null, SearchRepository.discoverUiState.value.emptyStateReason)
 
-            SearchRepository.search(query = "movie", addons = listOf(failedAddon))
-            SearchRepository.refreshDiscover(addons = listOf(failedAddon))
+            SearchRepository.search(query = "movie", addons = listOf(failedAddon), includeTmdb = false)
+            SearchRepository.refreshDiscover(addons = listOf(failedAddon), includeTmdb = false)
 
             assertFalse(SearchRepository.uiState.value.isLoading)
             assertEquals(SearchEmptyStateReason.RequestFailed, SearchRepository.uiState.value.emptyStateReason)
@@ -129,14 +129,14 @@ class SearchRequestStateTest {
 
         try {
             SearchRepository.reset()
-            SearchRepository.search(query = "movie", addons = listOf(loadedAddon, pendingAddon))
-            SearchRepository.refreshDiscover(addons = listOf(loadedAddon, pendingAddon))
+            SearchRepository.search(query = "movie", addons = listOf(loadedAddon, pendingAddon), includeTmdb = false)
+            SearchRepository.refreshDiscover(addons = listOf(loadedAddon, pendingAddon), includeTmdb = false)
 
             assertTrue(SearchRepository.uiState.value.isLoading)
             assertTrue(SearchRepository.discoverUiState.value.isLoading)
 
-            SearchRepository.search(query = "movie", addons = listOf(loadedAddon, failedAddon))
-            SearchRepository.refreshDiscover(addons = listOf(loadedAddon, failedAddon))
+            SearchRepository.search(query = "movie", addons = listOf(loadedAddon, failedAddon), includeTmdb = false)
+            SearchRepository.refreshDiscover(addons = listOf(loadedAddon, failedAddon), includeTmdb = false)
 
             assertFalse(SearchRepository.uiState.value.isLoading)
             assertEquals(SearchEmptyStateReason.NoSearchCatalogs, SearchRepository.uiState.value.emptyStateReason)

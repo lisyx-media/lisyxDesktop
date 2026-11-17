@@ -64,6 +64,7 @@ internal object AppUpdaterRepository {
     }
 
     suspend fun getLatestChannelUpdate(channel: UpdateChannel): Result<AppUpdate> = runCatching {
+        if (!AppUpdaterPlatform.isSupported) throw NoChannelReleaseException()
         val source = AppUpdaterPlatform.releaseSource
         val response = httpRequestRaw(
             method = "GET",

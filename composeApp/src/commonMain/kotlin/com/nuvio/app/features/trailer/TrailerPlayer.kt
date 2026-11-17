@@ -46,6 +46,7 @@ internal fun TrailerPlayer(
     onBack: (() -> Unit)? = null,
     onToggleFullscreen: (() -> Unit)? = null,
     onEscapeFullscreen: (() -> Unit)? = null,
+    onOpenInBrowser: (() -> Unit)? = null,
 ) {
     val error = errorMessage ?: state.error
     EnterImmersivePlayerMode(keepScreenAwake = error == null && state.playWhenReady && !state.snapshot.isEnded)
@@ -91,6 +92,7 @@ internal fun TrailerPlayer(
             canControlPlayback = source != null && !isLoading && error == null,
             title = title,
             onExitFullscreen = onExitFullscreen,
+            onOpenInBrowser = onOpenInBrowser,
         )
     }
 }

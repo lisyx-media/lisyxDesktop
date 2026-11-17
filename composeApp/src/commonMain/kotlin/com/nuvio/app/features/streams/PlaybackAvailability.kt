@@ -15,6 +15,7 @@ import com.nuvio.app.features.plugins.PluginRepository
 import com.nuvio.app.features.plugins.PluginsUiState
 import com.nuvio.app.features.servers.ServerRepository
 import com.nuvio.app.features.servers.ServerStreams
+import com.nuvio.app.features.lisy.LisyPlaybackSource
 
 internal fun AddonManifest.supportsStream(type: String, videoId: String): Boolean =
     supportsResource("stream", type, videoId)
@@ -34,7 +35,7 @@ internal class PlaybackAvailability(
     fun canStream(type: String, videoId: String): Boolean =
         hasCompatiblePlaybackSource(addons, plugins, type, videoId) ||
             MetaDetailsRepository.findEmbeddedStreams(videoId).isNotEmpty() ||
-            ServerStreams.canServe(type, videoId)
+            ServerStreams.canServe(type, videoId) || LisyPlaybackSource.canServe(type, videoId)
 
     fun canPlay(
         type: String,

@@ -15,6 +15,14 @@ sealed interface CatalogTarget {
         override val supportsPagination: Boolean = false,
     ) : CatalogTarget
 
+    data class Tmdb(
+        override val contentType: String,
+        val categoryId: String,
+        val searchQuery: String? = null,
+    ) : CatalogTarget {
+        override val supportsPagination: Boolean = searchQuery == null
+    }
+
     data class Library(
         override val contentType: String,
         val sectionType: String,

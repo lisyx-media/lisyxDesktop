@@ -42,9 +42,9 @@ internal object TrailerExtractionPlatform {
         .followSslRedirects(true)
         .build()
 
-    fun supportsSeparateVideo(candidate: StreamCandidate): Boolean = candidate.ext == "mp4"
+    fun supportsSeparateVideo(candidate: StreamCandidate): Boolean = false
 
-    fun supportsSeparateAudio(candidate: StreamCandidate): Boolean = candidate.ext == "m4a"
+    fun supportsSeparateAudio(candidate: StreamCandidate): Boolean = false
 
     fun diagnostic(message: String) {
         if (diagnosticsEnabled) {
@@ -98,65 +98,21 @@ internal object TrailerExtractionPlatform {
         bestVideo: StreamCandidate?,
         bestAudio: StreamCandidate?,
     ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
-        val bestCombinedIsManifest = bestManifest != null &&
-            (bestProgressive == null || bestManifest.height > bestProgressive.height)
-        val preferManifestPlayback = bestManifest != null &&
-            (bestVideo == null || bestManifest.height >= bestVideo.height)
-        val combinedUrl = if (bestCombinedIsManifest) {
-            bestManifest.manifestUrl
-        } else {
-            bestProgressive?.url
+        // A progressive file includes audio and video in one verified response.
+        // A successful HLS manifest probe alone does not check its media segments.
+        bestProgressive?.url?.let { resolveReachableUrlOrNull(it) }?.let { url ->
+            diagnostic("selected progressive ${describeUrl(url)}")
+            return@withContext TrailerPlaybackSource(videoUrl = url)
         }
 
-        val separatedVideoUrl = if (preferManifestPlayback) {
-            null
-        } else {
-            bestVideo?.url?.let { resolveReachableUrlOrNull(it) }
+        // The native desktop player takes a single audio/video source URL.
+        val manifestUrl = bestManifest?.manifestUrl?.let { resolveReachableUrlOrNull(it) }
+        if (manifestUrl != null) {
+            diagnostic("selected HLS ${describeUrl(manifestUrl)}")
+            return@withContext TrailerPlaybackSource(videoUrl = manifestUrl)
         }
-        if (!preferManifestPlayback && bestVideo != null && separatedVideoUrl == null) {
-            diagnostic("blocked stage=video_probe candidate=${bestVideo.diagnosticSummary()}")
-        }
-        val separatedAudioUrl = if (!separatedVideoUrl.isNullOrBlank()) {
-            bestAudio?.url?.let { resolveReachableUrlOrNull(it) }
-        } else {
-            null
-        }
-        if (separatedVideoUrl != null && bestAudio != null && separatedAudioUrl == null) {
-            diagnostic("blocked stage=audio_probe candidate=${bestAudio.diagnosticSummary()}")
-        }
-        val useSeparatedStreams = separatedVideoUrl != null && separatedAudioUrl != null
-        val combinedCandidateUrl = if (!useSeparatedStreams) {
-            combinedUrl?.let { resolveReachableUrlOrNull(it) }
-        } else {
-            null
-        }
-        val videoUrl = if (useSeparatedStreams) separatedVideoUrl else combinedCandidateUrl ?: separatedVideoUrl
-        if (videoUrl == null) {
-            diagnostic("blocked stage=source reason=no_reachable_video")
-            return@withContext null
-        }
-        val audioUrl = separatedAudioUrl.takeIf { useSeparatedStreams }
-        val mode = when {
-            useSeparatedStreams -> "adaptive_separate"
-            combinedCandidateUrl != null && bestCombinedIsManifest -> "hls"
-            combinedCandidateUrl != null -> "combined_fallback"
-            else -> "adaptive_video_only"
-        }
-        val videoSummary = when {
-            useSeparatedStreams -> bestVideo.diagnosticSummary()
-            combinedCandidateUrl != null && bestCombinedIsManifest -> bestManifest.diagnosticSummary()
-            combinedCandidateUrl != null -> bestProgressive.diagnosticSummary()
-            else -> bestVideo.diagnosticSummary()
-        }
-        diagnostic(
-            "selected mode=$mode video=[$videoSummary] audio=[${bestAudio.takeIf { useSeparatedStreams }.diagnosticSummary()}]",
-        )
-        diagnostic("source videoUrl=$videoUrl")
-        diagnostic("source audioUrl=${audioUrl ?: "none"}")
-        TrailerPlaybackSource(
-            videoUrl = videoUrl,
-            audioUrl = audioUrl,
-        )
+        diagnostic("blocked stage=source reason=no_reachable_av")
+        null
     }
 
     private suspend fun resolveReachableUrlOrNull(url: String): String? {
