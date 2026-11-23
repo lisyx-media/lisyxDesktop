@@ -66,6 +66,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun MediaBrowseScreen(
     mediaType: TmdbEntityMediaType,
+    isSelectedTab: Boolean,
     modifier: Modifier = Modifier,
     onPosterClick: ((MetaPreview) -> Unit)? = null,
     onPosterLongClick: ((MetaPreview) -> Unit)? = null,
@@ -114,7 +115,10 @@ internal fun MediaBrowseScreen(
                 if (mediaType == TmdbEntityMediaType.MOVIE) AppScreenTab.Films else AppScreenTab.Series, offset,
             ) }
     }
-    LaunchedEffect(visibleGenre) { listState.scrollToItem(0) }
+    val hasHero = visibleGenre == null && heroItems.isNotEmpty()
+    LaunchedEffect(isSelectedTab, visibleGenre, hasHero) {
+        if (isSelectedTab) listState.requestScrollToItem(0)
+    }
     val pageTitle = stringResource(
         if (mediaType == TmdbEntityMediaType.MOVIE) Res.string.media_movies else Res.string.media_series,
     )
@@ -135,10 +139,25 @@ internal fun MediaBrowseScreen(
             topPadding = if (visibleGenre == null) 0.dp else topChromePadding,
             listState = listState,
         ) {
-            if (visibleGenre == null && heroItems.isNotEmpty()) {
+            // Keep the first item's key stable so loading the catalog doesn't anchor the list to the header.
+            if (hasHero || (visibleGenre == null && browse == null)) {
                 item(key = "browse_hero") {
-                    HomeHeroSection(items = hero.items, modifier = heroModifier, viewportHeight = viewportHeight,
-                        sectionPadding = sectionPadding, onItemClick = onPosterClick, desktopTopInset = topChromePadding ?: 0.dp)
+                    if (browse == null) {
+                        HomeSkeletonHero(
+                            modifier = heroModifier,
+                            viewportHeight = viewportHeight,
+                            sectionPadding = sectionPadding,
+                        )
+                    } else {
+                        HomeHeroSection(
+                            items = hero.items,
+                            modifier = heroModifier,
+                            viewportHeight = viewportHeight,
+                            sectionPadding = sectionPadding,
+                            onItemClick = onPosterClick,
+                            desktopTopInset = topChromePadding ?: 0.dp,
+                        )
+                    }
                 }
             }
             item(key = "browse_header") {
@@ -186,13 +205,6 @@ internal fun MediaBrowseScreen(
 
             when {
                 browse == null -> {
-                    item(key = "browse_hero_loading") {
-                        HomeSkeletonHero(
-                            modifier = heroModifier,
-                            viewportHeight = viewportHeight,
-                            sectionPadding = sectionPadding,
-                        )
-                    }
                     item(key = "browse_rows_loading") { HomeSkeletonRow(horizontalPadding = sectionPadding) }
                 }
 

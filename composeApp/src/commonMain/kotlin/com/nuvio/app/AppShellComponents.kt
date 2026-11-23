@@ -264,6 +264,7 @@ internal fun AppTabHost(
             AppScreenTab.Films, AppScreenTab.Series -> {
                 MediaBrowseScreen(
                     mediaType = if (tab == AppScreenTab.Films) TmdbEntityMediaType.MOVIE else TmdbEntityMediaType.TV,
+                    isSelectedTab = tab == selectedTab,
                     modifier = Modifier.fillMaxSize(),
                     topChromePadding = state.topChromePadding,
                     onPosterClick = actions.onPosterClick,
