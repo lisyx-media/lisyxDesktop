@@ -112,6 +112,7 @@ import nuvio.composeapp.generated.resources.compose_nav_library
 import nuvio.composeapp.generated.resources.compose_nav_profile
 import nuvio.composeapp.generated.resources.compose_nav_search
 import nuvio.composeapp.generated.resources.compose_nav_series
+import nuvio.composeapp.generated.resources.lisy_tv
 import nuvio.composeapp.generated.resources.compose_nav_settings
 import nuvio.composeapp.generated.resources.compose_settings_page_root
 import nuvio.composeapp.generated.resources.sidebar_library
@@ -175,6 +176,7 @@ internal data class AppTabActions(
     val onLibraryPosterClick: ((LibraryItem) -> Unit)? = null,
     val onLibraryPosterLongClick: ((LibraryItem, LibrarySection) -> Unit)? = null,
     val onLibrarySectionViewAllClick: ((LibrarySection, LibrarySortOption) -> Unit)? = null,
+    val onTvPlay: (String, String, String, String?) -> Unit = { _, _, _, _ -> },
     val onCloudFilePlay: ((CloudLibraryItem, CloudLibraryFile) -> Unit)? = null,
     val onConnectCloudClick: (() -> Unit)? = null,
     val onDownloadsClick: () -> Unit = {},
@@ -269,6 +271,13 @@ internal fun AppTabHost(
                     topChromePadding = state.topChromePadding,
                     onPosterClick = actions.onPosterClick,
                     onPosterLongClick = actions.onPosterLongClick,
+                )
+            }
+
+            AppScreenTab.Tv -> {
+                com.nuvio.app.features.lisy.LiveTvScreen(
+                    topPadding = state.topChromePadding,
+                    onPlay = actions.onTvPlay,
                 )
             }
 
@@ -875,6 +884,19 @@ internal fun DesktopHoverSidebar(
                     Icon(
                         imageVector = Icons.Rounded.Tv,
                         contentDescription = stringResource(Res.string.compose_nav_series),
+                        modifier = Modifier.size(DesktopSidebarIconSize),
+                        tint = color,
+                    )
+                }
+                DesktopSidebarItem(
+                    label = stringResource(Res.string.lisy_tv),
+                    selected = selectedTab == AppScreenTab.Tv,
+                    expanded = sidebarExpanded,
+                    onClick = { selectTab(AppScreenTab.Tv) },
+                ) { color ->
+                    Icon(
+                        imageVector = Icons.Rounded.Tv,
+                        contentDescription = stringResource(Res.string.lisy_tv),
                         modifier = Modifier.size(DesktopSidebarIconSize),
                         tint = color,
                     )

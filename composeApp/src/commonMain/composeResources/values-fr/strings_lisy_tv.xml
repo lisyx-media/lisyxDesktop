@@ -1,0 +1,18 @@
+<resources>
+    <string name="lisy_tv">TV</string>
+    <string name="lisy_tv_live">Télévision en direct</string>
+    <string name="lisy_tv_live_badge">DIRECT</string>
+    <string name="lisy_tv_search">Rechercher une chaîne</string>
+    <string name="lisy_tv_all_countries">Tous les pays</string>
+    <string name="lisy_tv_unknown_country">Pays non renseigné</string>
+    <string name="lisy_tv_no_category">Sans catégorie</string>
+    <string name="lisy_tv_favorites">Favoris</string>
+    <string name="lisy_tv_all_channels">Toutes les chaînes</string>
+    <string name="lisy_tv_no_server">Ajoute ton serveur IPTV dans Paramètres › Services › Lisy.</string>
+    <string name="lisy_tv_load_error">Impossible de charger les chaînes.</string>
+    <string name="lisy_tv_play_error">Impossible de lancer cette chaîne.</string>
+    <string name="lisy_tv_empty">Aucune chaîne à afficher.</string>
+    <string name="lisy_tv_play">Regarder en direct</string>
+    <string name="lisy_tv_favorite">Ajouter aux favoris</string>
+    <string name="lisy_tv_unfavorite">Retirer des favoris</string>
+</resources>

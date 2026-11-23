@@ -40,6 +40,7 @@ import nuvio.composeapp.generated.resources.compose_nav_films
 import nuvio.composeapp.generated.resources.compose_nav_home
 import nuvio.composeapp.generated.resources.compose_nav_library
 import nuvio.composeapp.generated.resources.compose_nav_search
+import nuvio.composeapp.generated.resources.lisy_tv
 import nuvio.composeapp.generated.resources.compose_nav_series
 import nuvio.composeapp.generated.resources.lisyx_brand_name
 import nuvio.composeapp.generated.resources.sidebar_library
@@ -90,6 +91,7 @@ internal fun LisyxDesktopHeader(
                     AppScreenTab.Home to Res.string.compose_nav_home,
                     AppScreenTab.Films to Res.string.compose_nav_films,
                     AppScreenTab.Series to Res.string.compose_nav_series,
+                    AppScreenTab.Tv to Res.string.lisy_tv,
                 )
                 browseTabs.forEach { (tab, label) ->
                     val selected = tab == selectedTab

@@ -7,6 +7,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.CancellationException
 
 internal enum class LisyCatalog(val portalType: String, val mediaType: String) {
     Live("itv", "tv"), Movies("vod", "movie"), Series("series", "series"),
@@ -85,6 +86,52 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
         val total = container?.text("total_items")?.toLongOrNull()
         val pageSize = container?.text("max_page_items")?.toLongOrNull()?.takeIf { it > 0 } ?: rows.size.toLong()
         return LisyPage(entries, catalog != LisyCatalog.Live && rows.isNotEmpty() && total != null && page * pageSize < total)
+    }
+
+    suspend fun liveChannels(): List<LiveTvChannel> {
+        connect()
+        val channels = request("itv", "get_all_channels").catalogRows()
+        val genres = try {
+            request("itv", "get_genres").catalogRows().mapNotNull { genre ->
+                val id = genre.text("id") ?: return@mapNotNull null
+                val title = genre.text("title") ?: genre.text("name") ?: return@mapNotNull null
+                id to title
+            }.toMap()
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        val base = Url(server.url)
+        val variants = channels.mapNotNull { row ->
+            val id = row.text("id") ?: return@mapNotNull null
+            val title = row.text("name")?.takeIf { it.isNotBlank() } ?: id
+            val category = row.text("tv_genre_id")?.let(genres::get)
+                ?: row.text("genre_title")?.takeIf { it.isNotBlank() }
+            LiveTvVariant(
+                entry = LisyEntry(id, title, row.text("cmd"), emptyList()),
+                logo = row.text("logo")?.takeIf { it.isNotBlank() }?.let { logo ->
+                    runCatching { URLBuilder(base).apply {
+                        parameters.clear()
+                        fragment = ""
+                    }.build().resolveUrl(logo) }.getOrNull()
+                },
+                category = category,
+                country = liveTvCountry(row.text("country_code") ?: row.text("country"), title, category),
+            )
+        }
+        return groupLiveTvChannels(variants)
+    }
+
+    private fun JsonElement.catalogRows(): List<JsonObject> {
+        val rows = this as? JsonArray ?: (this as? JsonObject)?.get("data") as? JsonArray
+            ?: error("Missing catalog")
+        return rows.mapNotNull { it as? JsonObject }
+    }
+
+    private fun Url.resolveUrl(path: String): String? {
+        val url = URLBuilder(this).takeFrom(path).build()
+        return url.toString().takeIf { url.protocol == URLProtocol.HTTP || url.protocol == URLProtocol.HTTPS }
     }
 
     suspend fun stream(catalog: LisyCatalog, entry: LisyEntry, episode: Int? = null): String {

@@ -1,0 +1,18 @@
+<resources>
+    <string name="lisy_tv">TV</string>
+    <string name="lisy_tv_live">Live TV</string>
+    <string name="lisy_tv_live_badge">LIVE</string>
+    <string name="lisy_tv_search">Find a channel</string>
+    <string name="lisy_tv_all_countries">All countries</string>
+    <string name="lisy_tv_unknown_country">Unknown country</string>
+    <string name="lisy_tv_no_category">Uncategorized</string>
+    <string name="lisy_tv_favorites">Favorites</string>
+    <string name="lisy_tv_all_channels">All channels</string>
+    <string name="lisy_tv_no_server">Add your IPTV server in Settings › Services › Lisy.</string>
+    <string name="lisy_tv_load_error">Could not load the channels.</string>
+    <string name="lisy_tv_play_error">Could not start this channel.</string>
+    <string name="lisy_tv_empty">No channels to display.</string>
+    <string name="lisy_tv_play">Watch live</string>
+    <string name="lisy_tv_favorite">Add to favorites</string>
+    <string name="lisy_tv_unfavorite">Remove from favorites</string>
+</resources>

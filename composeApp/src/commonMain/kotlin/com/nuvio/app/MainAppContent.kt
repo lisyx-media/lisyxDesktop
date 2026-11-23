@@ -435,7 +435,7 @@ internal fun MainAppContent(
             }
             AppScreenTab.Library -> libraryScrollToTopRequests.tryEmit(Unit)
             AppScreenTab.Settings -> settingsRootActionRequests.tryEmit(Unit)
-            AppScreenTab.Films, AppScreenTab.Series -> Unit
+            AppScreenTab.Films, AppScreenTab.Series, AppScreenTab.Tv -> Unit
         }
     }
 
@@ -1437,6 +1437,20 @@ internal fun MainAppContent(
                                     )
                                 },
                                 onLibrarySectionViewAllClick = onLibrarySectionViewAllClick,
+                                onTvPlay = { id, title, url, logo ->
+                                    val launch = PlayerLaunch(
+                                        profileId = activePlaybackProfileId,
+                                        title = title,
+                                        sourceUrl = url,
+                                        logo = logo,
+                                        streamTitle = title,
+                                        providerName = "Lisy",
+                                        parentMetaId = "lisy-tv:$id",
+                                        parentMetaType = "tv",
+                                    )
+                                    val launchId = PlayerLaunchStore.put(launch)
+                                    navController.navigate(PlayerRoute(launchId = launchId, title = title))
+                                },
                                 onCloudFilePlay = { item, file ->
                                     coroutineScope.launch {
                                         val resumeItem = WatchProgressRepository
@@ -2201,6 +2215,6 @@ internal fun MainAppContent(
 private fun AppRoute?.drawsUnderVerticalBar(selectedTab: AppScreenTab): Boolean =
     when (this) {
         is DetailRoute, is StreamRoute, is PlayerRoute -> true
-        is TabsRoute -> selectedTab in setOf(AppScreenTab.Home, AppScreenTab.Films, AppScreenTab.Series, AppScreenTab.Library)
+        is TabsRoute -> selectedTab in setOf(AppScreenTab.Home, AppScreenTab.Films, AppScreenTab.Series, AppScreenTab.Tv, AppScreenTab.Library)
         else -> false
     }
