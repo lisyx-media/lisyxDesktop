@@ -4,4 +4,5 @@ data class TrailerPlaybackSource(
     val videoUrl: String,
     val audioUrl: String? = null,
     val fallbackVideoUrl: String? = null,
+    val previewManifestUrl: String? = null,
 )

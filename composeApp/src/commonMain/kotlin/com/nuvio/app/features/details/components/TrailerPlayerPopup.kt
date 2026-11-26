@@ -48,6 +48,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import nuvio.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -63,6 +64,10 @@ fun TrailerPlayerPopup(
     isLoading: Boolean,
     errorMessage: String?,
     onDismiss: () -> Unit,
+    initialPositionMs: Long = 0,
+    initiallyMuted: Boolean = false,
+    previewPosition: (() -> Long)? = null,
+    onPlayerPrepared: (() -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
     onOpenInBrowser: (() -> Unit)? = null,
 ) {
@@ -80,7 +85,25 @@ fun TrailerPlayerPopup(
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
-    val playbackState = remember(playbackSource) { TrailerPlaybackState() }
+    val playbackState = remember(playbackSource) { TrailerPlaybackState(initialPositionMs, initiallyMuted) }
+    if (onPlayerPrepared != null) {
+        LaunchedEffect(playbackState) {
+            androidx.compose.runtime.snapshotFlow { playbackState.snapshot.isPlaying || playbackState.error != null }
+                .first { it }
+            val controller = playbackState.controller
+            val target = previewPosition?.invoke() ?: initialPositionMs
+            if (playbackState.error == null && target > playbackState.snapshot.positionMs + 450 && controller != null) {
+                controller.setMuted(true)
+                controller.seekTo(target)
+                kotlinx.coroutines.withTimeoutOrNull(2_000) {
+                    androidx.compose.runtime.snapshotFlow { playbackState.snapshot }
+                        .first { it.isPlaying && it.positionMs >= target - 250 }
+                }
+                controller.setMuted(initiallyMuted)
+            }
+            onPlayerPrepared()
+        }
+    }
     var fullscreen by remember { mutableStateOf(false) }
     var releasing by remember { mutableStateOf(false) }
     fun releasePlayerThen(

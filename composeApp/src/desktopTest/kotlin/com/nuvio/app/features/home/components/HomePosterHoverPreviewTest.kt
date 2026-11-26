@@ -9,7 +9,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import com.nuvio.app.core.ui.NuvioTheme
-import com.nuvio.app.core.ui.DefaultHoverPreviewOpenDelayMillis
 import com.nuvio.app.features.home.MetaPreview
 import kotlinx.coroutines.runBlocking
 import nuvio.composeapp.generated.resources.Res
@@ -44,7 +43,9 @@ class HomePosterHoverPreviewTest {
         compose.onNodeWithText(detailsLabel).assertDoesNotExist()
         compose.mainClock.autoAdvance = false
         compose.onNodeWithTag("poster").performMouseInput { enter(center) }
-        compose.mainClock.advanceTimeBy(DefaultHoverPreviewOpenDelayMillis.toLong() + 500)
+        compose.mainClock.advanceTimeBy(900)
+        compose.onNodeWithText(detailsLabel).assertDoesNotExist()
+        compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText(detailsLabel).assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, clicked) }
     }

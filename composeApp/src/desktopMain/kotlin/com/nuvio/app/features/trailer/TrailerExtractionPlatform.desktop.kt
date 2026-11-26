@@ -107,15 +107,18 @@ internal object TrailerExtractionPlatform {
             val audio = async { if (hdVideo != null) bestAudio?.url?.let { resolveReachableUrlOrNull(it) } else null }
             Triple(progressive.await(), video.await(), audio.await())
         }
+        val manifestUrl = bestManifest?.manifestUrl?.let { resolveReachableUrlOrNull(it) }
         if (bestVideo != null && bestVideo.height >= 720 && bestAudio != null) {
             if (video != null && audio != null && video.startsWith("https://") && audio.startsWith("https://")) {
-                // mpv can load two synchronized tracks as one source using its EDL format.
-                val source = "edl://%${video.encodeToByteArray().size}%$video;!new_stream;%${audio.encodeToByteArray().size}%$audio"
                 diagnostic("selected adaptive height=${bestVideo.height}")
-                return@withContext TrailerPlaybackSource(videoUrl = source, fallbackVideoUrl = progressiveUrl)
+                return@withContext TrailerPlaybackSource(
+                    videoUrl = video,
+                    audioUrl = audio,
+                    fallbackVideoUrl = manifestUrl ?: progressiveUrl,
+                    previewManifestUrl = manifestUrl?.takeIf { (bestManifest?.height ?: 0) >= bestVideo.height },
+                )
             }
         }
-        val manifestUrl = bestManifest?.manifestUrl?.let { resolveReachableUrlOrNull(it) }
         if (manifestUrl != null && (progressiveUrl == null || bestManifest.height > (bestProgressive?.height ?: 0))) {
             diagnostic("selected HLS height=${bestManifest.height}")
             return@withContext TrailerPlaybackSource(videoUrl = manifestUrl, fallbackVideoUrl = progressiveUrl)

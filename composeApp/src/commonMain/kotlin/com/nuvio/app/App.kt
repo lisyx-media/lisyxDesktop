@@ -112,7 +112,7 @@ internal fun AppEnvironment(content: @Composable () -> Unit) {
             customThemeColors = customThemeColors,
             desktopUiScale = desktopUiScaleForWindow(maxWidth.value, maxHeight.value),
         ) {
-            content()
+            if (isDesktop) com.nuvio.app.features.trailer.DesktopTrailerHost(content) else content()
         }
     }
 }

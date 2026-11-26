@@ -363,13 +363,14 @@ class InAppYouTubeExtractor {
         }
         val supportedVideo = adaptiveVideo.filter(TrailerExtractionPlatform::supportsSeparateVideo)
         val supportedAudio = adaptiveAudio.filter(TrailerExtractionPlatform::supportsSeparateAudio)
+        val maxHeight = supportedVideo.maxOfOrNull { it.height }
         val bestVideo = pickBestForClient(
-            supportedVideo,
+            supportedVideo.filter { it.height == maxHeight },
             PREFERRED_SEPARATE_CLIENT,
         )
         val bestAudio = pickBestForClient(
-            supportedAudio,
-            PREFERRED_SEPARATE_CLIENT,
+            supportedAudio.filter { it.isDefaultAudioTrack }.ifEmpty { supportedAudio },
+            bestVideo?.client ?: PREFERRED_SEPARATE_CLIENT,
         )
         TrailerExtractionPlatform.diagnostic(
             "candidates progressive=${progressive.size} adaptiveVideo=${adaptiveVideo.size} " +

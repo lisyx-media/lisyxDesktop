@@ -48,6 +48,8 @@ internal fun TrailerPlayer(
     onRetry: (() -> Unit)?,
     modifier: Modifier = Modifier,
     title: String = "",
+    compact: Boolean = false,
+    onPreviewHover: (Boolean) -> Unit = {},
     onExitFullscreen: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     onToggleFullscreen: (() -> Unit)? = null,
@@ -80,7 +82,7 @@ internal fun TrailerPlayer(
                     onBack = onBack,
                     onToggleFullscreen = onToggleFullscreen,
                     onEscapeFullscreen = onEscapeFullscreen,
-                    title = title,
+                    title = title, compact = compact, onPreviewHover = onPreviewHover,
                     onOpenInBrowser = onOpenInBrowser,
                     onFailure = { message ->
                         if (!usingFallback && source.fallbackVideoUrl != null && state.snapshot.positionMs < 1_000) {
@@ -138,12 +140,14 @@ private fun TrailerPlaybackSurface(
     onToggleFullscreen: (() -> Unit)?,
     onEscapeFullscreen: (() -> Unit)?,
     title: String,
+    compact: Boolean,
+    onPreviewHover: (Boolean) -> Unit,
     onOpenInBrowser: (() -> Unit)?,
     onFailure: (String?) -> Unit,
 ) {
     val presentationId = remember { state.presentationId }
     val resumePositionMs = remember { state.snapshot.positionMs }
-    var restoringPosition by remember { mutableStateOf(resumePositionMs > 0L) }
+    var restoringPosition by remember { mutableStateOf(!isDesktop && resumePositionMs > 0L) }
     var controller by remember { mutableStateOf<PlayerEngineController?>(null) }
     var snapshot by remember { mutableStateOf(PlayerPlaybackSnapshot()) }
 
@@ -156,6 +160,13 @@ private fun TrailerPlaybackSurface(
             restoringPosition = false
         }
     }
+    var pendingMute by remember { mutableStateOf(state.initiallyMuted) }
+    LaunchedEffect(controller, snapshot.isLoading) {
+        if (pendingMute && controller != null && !snapshot.isLoading) {
+            controller?.setMuted(true)
+            pendingMute = false
+        }
+    }
     DisposableEffect(state) {
         onDispose {
             if (state.controller === controller) state.controller = null
@@ -165,6 +176,7 @@ private fun TrailerPlaybackSurface(
         sourceUrl = source.videoUrl,
         sourceAudioUrl = source.audioUrl,
         useYoutubeChunkedPlayback = true,
+        initialPositionMs = resumePositionMs.takeIf { isDesktop && it > 0L },
         modifier = Modifier.fillMaxSize(),
         playWhenReady = state.playWhenReady && !restoringPosition && !state.snapshot.isEnded &&
             presentationId == state.presentationId,
@@ -173,6 +185,7 @@ private fun TrailerPlaybackSurface(
         playerControlsState = if (isDesktop) PlayerControlsState(
             title = title,
             trailerMode = true,
+            compactTrailer = compact,
             pauseOverlayEnabled = false,
             closeLabel = stringResource(Res.string.trailer_close),
             showExternalPlayer = onOpenInBrowser != null,
@@ -187,7 +200,7 @@ private fun TrailerPlaybackSurface(
             }
         },
         onPlayerControlsEvent = { type, value ->
-            type == "toggleFullscreen" &&
+            if (type == "previewHover") { onPreviewHover(value > 0); true } else type == "toggleFullscreen" &&
                 (if (value >= 0.5) onEscapeFullscreen else onToggleFullscreen).invokeIfPresent()
         },
         onControllerReady = {

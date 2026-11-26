@@ -75,7 +75,7 @@ actual fun PlatformPlayerSurface(
         DesktopHostOs.current == DesktopHostOs.LINUX
     ) {
         NativePlayerSurface(
-            sourceUrl = sourceUrl,
+            sourceUrl = remember(sourceUrl, sourceAudioUrl) { mpvPlaybackUrl(sourceUrl, sourceAudioUrl) },
             sourceAvailable = sourceAvailable,
             sourceHeaders = sourceHeaders,
             externalSubtitles = externalSubtitles,
@@ -168,6 +168,25 @@ private fun NativePlayerSurface(
     val latestControlsState = rememberUpdatedState(controlsState)
     val latestOnPlayerControlsAction = rememberUpdatedState(onPlayerControlsAction)
     val latestOnPlayerControlsEvent = rememberUpdatedState(onPlayerControlsEvent)
+    LaunchedEffect(host, controlsState.compactTrailer) {
+        if (!controlsState.compactTrailer) return@LaunchedEffect
+        var inside = false
+        var previousFrame: java.awt.Rectangle? = null
+        while (true) {
+            val pointer = java.awt.MouseInfo.getPointerInfo()?.location
+            val frame = if (host.isShowing) java.awt.Rectangle(host.locationOnScreen, host.size) else null
+            if (frame != previousFrame) {
+                controller.updateControls(latestControlsState.value)
+                previousFrame = frame
+            }
+            val overVideo = pointer != null && frame?.contains(pointer) == true
+            if (inside != overVideo) {
+                inside = overVideo
+                latestOnPlayerControlsEvent.value("previewHover", if (inside) 1.0 else 0.0)
+            }
+            delay(60)
+        }
+    }
     val latestOnPlayerControlsScrubChange = rememberUpdatedState(onPlayerControlsScrubChange)
     val latestOnPlayerControlsScrubFinished = rememberUpdatedState(onPlayerControlsScrubFinished)
     val latestOnInitialPositionHandled = rememberUpdatedState(onInitialPositionHandled)
@@ -413,3 +432,8 @@ private class DesktopStubPlayerController : PlayerEngineController {
     override fun clearExternalSubtitle() = Unit
     override fun clearExternalSubtitleAndSelect(trackIndex: Int) = Unit
 }
+
+// mpv accepts a multi-stream EDL as one source. Length-prefixed segments preserve signed URLs verbatim.
+internal fun mpvPlaybackUrl(video: String, audio: String?): String =
+    if (audio.isNullOrBlank()) video else
+        "edl://%${video.encodeToByteArray().size}%$video;!new_stream;%${audio.encodeToByteArray().size}%$audio"

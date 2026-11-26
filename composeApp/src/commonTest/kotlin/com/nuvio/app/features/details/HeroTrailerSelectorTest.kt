@@ -54,6 +54,21 @@ class HeroTrailerSelectorTest {
         assertNull(selectHeroTrailer(listOf(trailer(id = "other", site = "Vimeo"))))
     }
 
+    @Test
+    fun frenchDubPrecedesANewerSubtitledTrailer() {
+        val dubbed = trailer(id = "Bande-annonce officielle [VF]", official = true)
+        val subtitled = trailer(id = "Bande-annonce finale VOSTFR", official = true, publishedAt = "2026-11-01")
+        assertEquals(dubbed, selectHeroTrailer(listOf(subtitled, dubbed), "fr-FR"))
+        assertEquals(subtitled, selectHeroTrailer(listOf(subtitled), "fr-FR"))
+    }
+
+    @Test
+    fun fullTrailerPrecedesTheNewerCountdownSpot() {
+        val full = trailer(id = "Bande-annonce officielle VF", official = true)
+        val spot = trailer(id = "Bande-annonce J-15 VF", official = true, publishedAt = "2026-06-30")
+        assertEquals(full, selectHeroTrailer(listOf(spot, full)))
+    }
+
     private fun trailer(
         id: String,
         key: String = id,

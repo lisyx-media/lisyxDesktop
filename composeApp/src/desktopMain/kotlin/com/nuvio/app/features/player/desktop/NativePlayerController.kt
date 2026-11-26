@@ -295,6 +295,7 @@ internal class NativePlayerController(
                 if (!releaseRequested && pendingSource === pending) pending.onError(error.message)
                 return
             }
+        val preview = previewFrame(controlsState)
         val resolvedSource = if (pending.sourceUrl.startsWith("file:", ignoreCase = true)) {
             runCatching { java.io.File(java.net.URI(pending.sourceUrl)).absolutePath }.getOrElse {
                 val stripped = pending.sourceUrl.replaceFirst(Regex("^file:/{1,3}", RegexOption.IGNORE_CASE), "")
@@ -318,7 +319,7 @@ internal class NativePlayerController(
                         pending.headerLines.toTypedArray(),
                         pending.playWhenReady,
                         pending.initialPositionMs,
-                        NativePlayerBridge.controlsPageUrl,
+                        NativePlayerBridge.controlsPageUrl + (preview?.let { "#preview=${it.x},${it.y},${it.width},${it.height}" } ?: ""),
                         pending.decoderPriority,
                         pending.nvidiaRtxSuperResolutionEnabled,
                         eventSink,
@@ -433,6 +434,11 @@ internal class NativePlayerController(
     }
 
     @Synchronized
+    private fun previewFrame(state: PlayerControlsState): java.awt.Rectangle? =
+        if (state.compactTrailer && DesktopHostOs.current == DesktopHostOs.MACOS && host.isShowing)
+            java.awt.Rectangle(host.locationOnScreen, host.size)
+        else null
+
     fun updateControls(state: PlayerControlsState) {
         host.setControlsVisible(state.controlsVisible)
         val currentHandle = handle
@@ -450,7 +456,9 @@ internal class NativePlayerController(
         currentVolumeLevel = stateWithVolume.volumeLevel ?: currentVolumeLevel
         controlsState = stateWithVolume
         val isFullscreen = isDesktopAppFullscreen(SwingUtilities.getWindowAncestor(host))
+        val frame = previewFrame(stateWithVolume)
         val structureKey = NativeControlsStructureKey(
+            previewFrame = frame,
             state = stateWithVolume.nativeControlsStructureKey(),
             isFullscreen = isFullscreen,
             isInPip = DesktopPlayerPictureInPicture.isEnabled,
@@ -463,7 +471,7 @@ internal class NativePlayerController(
                 "speed=${stateWithVolume.playbackSpeedLabel} audioLabel=${stateWithVolume.audioLabel} " +
                 "subsLabel=${stateWithVolume.subtitlesLabel} fullscreen=$isFullscreen"
         }
-        NativePlayerBridge.updateControls(current, stateWithVolume.toControlsJson(isFullscreen, ::refreshControlsForImage))
+        NativePlayerBridge.updateControls(current, stateWithVolume.toControlsJson(isFullscreen, frame, ::refreshControlsForImage))
     }
 
     private fun refreshControlsForImage() {
@@ -972,6 +980,10 @@ internal class NativePlayerController(
         handle.takeIf { it != 0L }?.let { NativePlayerBridge.setPaused(it, false) }
     }
 
+    override fun setMuted(muted: Boolean) {
+        setTemporaryVolume(if (muted) 0f else rememberedVolumeLevel)
+    }
+
     override fun pause() {
         log.d { "pause handle=$handle" }
         handle.takeIf { it != 0L }?.let { NativePlayerBridge.setPaused(it, true) }
@@ -1303,12 +1315,13 @@ private fun String.toPlayerControlsAction(): PlayerControlsAction? =
     }
 
 private data class NativeControlsStructureKey(
+    val previewFrame: java.awt.Rectangle?,
     val state: PlayerControlsState,
     val isFullscreen: Boolean,
     val isInPip: Boolean,
 )
 
-private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageReady: () -> Unit): String =
+private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, frame: java.awt.Rectangle?, onImageReady: () -> Unit): String =
     buildString {
         append('{')
         appendJsonField("title", title)
@@ -1575,6 +1588,11 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
         appendJsonField("controlsVisible", controlsVisible)
         append(',')
         appendJsonField("trailerMode", trailerMode)
+        append(',')
+        appendJsonField("compactTrailer", compactTrailer)
+        if (frame != null) {
+            append(",\"previewFrame\":[${frame.x},${frame.y},${frame.width},${frame.height}]")
+        }
         append(',')
         appendJsonArrayField("parentalWarnings", parentalWarnings) { appendParentalWarningJson(it) }
         append(',')

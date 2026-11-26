@@ -12,7 +12,7 @@ import kotlin.math.roundToInt
 internal const val DefaultPosterCardWidthDp = 126
 internal const val DefaultPosterCardHeightDp = 189
 internal const val DefaultPosterCardCornerRadiusDp = 12
-internal const val DefaultHoverPreviewOpenDelayMillis = 400
+internal const val DefaultHoverPreviewOpenDelayMillis = 1_000
 internal const val MinHoverPreviewOpenDelayMillis = 100
 internal const val MaxHoverPreviewOpenDelayMillis = 5_000
 internal const val HoverPreviewOpenDelayStepMillis = 100
@@ -43,8 +43,8 @@ private data class StoredPosterCardStylePreferences(
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
-    val hoverPreviewTrailerEnabled: Boolean = false,
-    val hoverPreviewTrailerSoundEnabled: Boolean = false,
+    val hoverPreviewTrailerEnabled: Boolean = true,
+    val hoverPreviewTrailerSoundEnabled: Boolean = true,
     val hoverPreviewTrailerStartSeconds: Int = DefaultHoverPreviewTrailerStartSeconds,
     val alwaysShowLandscapeClearlogo: Boolean = false,
     val animatedArtworkMode: String = AnimatedArtworkMode.Always.name,
@@ -58,8 +58,8 @@ data class PosterCardStyleUiState(
     val hideLabelsEnabled: Boolean = false,
     val hoverPreviewEnabled: Boolean = true,
     val hoverPreviewOpenDelayMillis: Int = DefaultHoverPreviewOpenDelayMillis,
-    val hoverPreviewTrailerEnabled: Boolean = false,
-    val hoverPreviewTrailerSoundEnabled: Boolean = false,
+    val hoverPreviewTrailerEnabled: Boolean = true,
+    val hoverPreviewTrailerSoundEnabled: Boolean = true,
     val hoverPreviewTrailerStartSeconds: Int = DefaultHoverPreviewTrailerStartSeconds,
     val alwaysShowLandscapeClearlogo: Boolean = false,
     val animatedArtworkMode: AnimatedArtworkMode = AnimatedArtworkMode.Always,

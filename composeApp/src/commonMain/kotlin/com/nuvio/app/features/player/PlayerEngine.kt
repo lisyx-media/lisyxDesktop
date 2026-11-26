@@ -249,6 +249,7 @@ data class PlayerControlsState(
     val lockedOverlayVisible: Boolean = false,
     val controlsVisible: Boolean = true,
     val trailerMode: Boolean = false,
+    val compactTrailer: Boolean = false,
     val parentalWarnings: List<ParentalWarning> = emptyList(),
     val showParentalGuide: Boolean = false,
     val showOpeningOverlay: Boolean = false,

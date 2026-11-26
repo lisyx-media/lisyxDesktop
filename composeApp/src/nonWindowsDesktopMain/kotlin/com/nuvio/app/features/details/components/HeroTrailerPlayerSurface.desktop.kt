@@ -36,6 +36,7 @@ actual fun HeroTrailerPlayerSurface(
     startPositionMillis: Long,
     fillFrame: Boolean,
     modifier: Modifier,
+    onPosition: (Long) -> Unit,
     onReady: () -> Unit,
     onEnded: () -> Unit,
     onError: () -> Unit,
@@ -49,6 +50,7 @@ actual fun HeroTrailerPlayerSurface(
             startPositionMillis = startPositionMillis,
             fillFrame = fillFrame,
             modifier = modifier,
+            onPosition = onPosition,
             onReady = onReady,
             onEnded = onEnded,
             onError = onError,
@@ -65,12 +67,17 @@ private fun DesktopTrailerPlayerSession(
     startPositionMillis: Long,
     fillFrame: Boolean,
     modifier: Modifier,
+    onPosition: (Long) -> Unit,
     onReady: () -> Unit,
     onEnded: () -> Unit,
     onError: () -> Unit,
 ) {
     val player = rememberVideoPlayerState()
     val callbackScope = rememberCoroutineScope()
+    val latestPosition by rememberUpdatedState(onPosition)
+    LaunchedEffect(player) {
+        snapshotFlow { (player.currentTime * 1_000).toLong() }.collect { latestPosition(it) }
+    }
     val latestOnReady = rememberUpdatedState(onReady)
     val latestOnEnded = rememberUpdatedState(onEnded)
     val latestOnError = rememberUpdatedState(onError)

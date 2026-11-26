@@ -9,8 +9,8 @@ import com.nuvio.app.features.player.PlayerEngineController
 import com.nuvio.app.features.player.PlayerPlaybackSnapshot
 
 @Stable
-internal class TrailerPlaybackState {
-    var snapshot by mutableStateOf(PlayerPlaybackSnapshot())
+internal class TrailerPlaybackState(initialPositionMs: Long = 0L, val initiallyMuted: Boolean = false) {
+    var snapshot by mutableStateOf(PlayerPlaybackSnapshot(positionMs = initialPositionMs))
     var playWhenReady by mutableStateOf(true)
         private set
     var error by mutableStateOf<String?>(null)

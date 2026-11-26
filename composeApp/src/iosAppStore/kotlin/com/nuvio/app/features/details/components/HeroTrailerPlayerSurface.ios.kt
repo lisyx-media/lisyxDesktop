@@ -13,6 +13,7 @@ actual fun HeroTrailerPlayerSurface(
     startPositionMillis: Long,
     fillFrame: Boolean,
     modifier: Modifier,
+    onPosition: (Long) -> Unit,
     onReady: () -> Unit,
     onEnded: () -> Unit,
     onError: () -> Unit,

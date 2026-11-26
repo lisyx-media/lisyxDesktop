@@ -618,6 +618,8 @@ const syncVolumeControl = () => {
   if (volumeButton) {
     const btnLabel = percent === 0 ? "Unmute" : "Mute";
     volumeButton.setAttribute("aria-label", btnLabel);
+    document.getElementById("previewVolume").setAttribute("aria-label", btnLabel);
+    document.getElementById("previewVolumeIcon").setAttribute("href", volumeIcon.getAttribute("href"));
     volumeButton.setAttribute("title", btnLabel);
   }
 };
@@ -2776,6 +2778,7 @@ const renderChrome = () => {
   root.classList.toggle("pip-mode", Boolean(state.isInPip));
   if (!state.isInPip && isPipLocked) setPipLocked(false);
   root.classList.toggle("trailer-mode", Boolean(state.trailerMode));
+  root.classList.toggle("compact-trailer", Boolean(state.compactTrailer));
   root.classList.toggle("chrome-hidden", Boolean(showError || !state.controlsVisible));
   root.classList.toggle("modal-open", Boolean(activeModal));
   root.classList.toggle("info-open", activeModal === "streamInfo");
@@ -4478,3 +4481,12 @@ setProgress(0, 0, 0);
 focusShortcutRoot();
 render();
 send("controlsReady", 0);
+
+document.getElementById("previewFullscreen").onclick = event => {
+  event.stopPropagation();
+  send("toggleFullscreen", 0);
+};
+document.getElementById("previewVolume").onclick = event => {
+  event.stopPropagation();
+  volumeButton.click();
+};

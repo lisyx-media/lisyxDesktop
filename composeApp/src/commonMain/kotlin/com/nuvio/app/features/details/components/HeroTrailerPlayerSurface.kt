@@ -12,6 +12,7 @@ expect fun HeroTrailerPlayerSurface(
     startPositionMillis: Long = 0L,
     fillFrame: Boolean = false,
     modifier: Modifier,
+    onPosition: (Long) -> Unit = {},
     onReady: () -> Unit,
     onEnded: () -> Unit,
     onError: () -> Unit,

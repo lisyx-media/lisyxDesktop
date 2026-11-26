@@ -48,7 +48,27 @@ import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import com.nuvio.app.features.details.MetaTrailer
+import com.nuvio.app.features.details.selectHeroTrailer
+import com.nuvio.app.features.details.youtubePlaybackUrl
+import com.nuvio.app.features.trailer.LocalDesktopPreview
+import com.nuvio.app.features.trailer.PosterOverlay
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.DisposableEffect
+import com.nuvio.app.features.trailer.DesktopTrailerRequest
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.VolumeOff
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import com.nuvio.app.core.ui.PosterCardStyleRepository
+import kotlinx.coroutines.async
+import nuvio.composeapp.generated.resources.action_fullscreen
+import nuvio.composeapp.generated.resources.tv_preview_mute
+import nuvio.composeapp.generated.resources.tv_preview_unmute
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -113,7 +133,7 @@ import org.jetbrains.compose.resources.stringResource
 private const val HoverPreviewCloseDelayMillis = 120L
 private const val HoverPreviewEnterDurationMillis = 260
 private const val HoverPreviewExitDurationMillis = 170
-private const val HoverTrailerExtractionDebounceMillis = 1_000L
+private const val HoverTrailerStartDelayMillis = 3_000L
 private val HoverPreviewWidth = 420.dp
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -139,7 +159,7 @@ internal fun HomePosterHoverPreview(
         return
     }
 
-    if (PosterZoomOverlayCoordinator.isVisible) {
+    if (PosterZoomOverlayCoordinator.isVisible || LocalDesktopPreview.current?.expanded == true) {
         content(modifier)
         return
     }
@@ -151,11 +171,12 @@ internal fun HomePosterHoverPreview(
     var previewVisible by remember(item.type, item.id) { mutableStateOf(false) }
     var popupMounted by remember(item.type, item.id) { mutableStateOf(false) }
     var previewDismissedByScroll by remember(item.type, item.id) { mutableStateOf(false) }
-    var trailerRequestId by remember(item.type, item.id) { mutableIntStateOf(0) }
-    var trailerResolutionPending by remember(item.type, item.id) { mutableStateOf(false) }
+    val session = LocalDesktopPreview.current
+    var selectedTrailer by remember(item.type, item.id) { mutableStateOf<MetaTrailer?>(null) }
     var trailerPlaybackSource by remember(item.type, item.id) {
         mutableStateOf<TrailerPlaybackSource?>(null)
     }
+    val nativeHovered = session?.request?.source == trailerPlaybackSource && session?.pointerInside == true
     var previewIsSaved by remember(item.type, item.id) { mutableStateOf(false) }
     var pendingTrackingRemoval by remember(item.type, item.id) {
         mutableStateOf<PendingTrackingMembershipRemoval?>(null)
@@ -164,7 +185,7 @@ internal fun HomePosterHoverPreview(
     val libraryItem = remember(item) { item.toLibraryItem(savedAtEpochMs = 0L) }
     val trackingListsUpdateFailedMessage = stringResource(Res.string.tracking_lists_update_failed)
     val density = LocalDensity.current
-    val positionProvider = remember(density) {
+    val positionProvider = remember(density, item.type, item.id) {
         HomePosterPreviewPositionProvider(
             edgeMarginPx = with(density) { NuvioTokens.Space.s16.roundToPx() },
             topOverlapPx = with(density) { NuvioTokens.Space.s24.roundToPx() },
@@ -175,15 +196,16 @@ internal fun HomePosterHoverPreview(
         anchorHovered,
         previewHovered,
         posterCardStyle.hoverPreviewOpenDelayMillis,
-        previewDismissedByScroll,
+        previewDismissedByScroll, nativeHovered,
     ) {
+
         if (previewDismissedByScroll) {
             if (!anchorHovered && !previewHovered) {
                 previewDismissedByScroll = false
             }
             return@LaunchedEffect
         }
-        if (anchorHovered || previewHovered) {
+        if (anchorHovered || previewHovered || nativeHovered) {
             if (!popupMounted) {
                 delay(posterCardStyle.hoverPreviewOpenDelayMillis.toLong())
                 popupMounted = true
@@ -198,50 +220,26 @@ internal fun HomePosterHoverPreview(
         }
     }
 
-    LaunchedEffect(anchorHovered, trailerPlaybackEnabled) {
-        if (
-            anchorHovered &&
-            trailerPlaybackEnabled &&
-            trailerPlaybackSource == null &&
-            !trailerResolutionPending
-        ) {
-            delay(HoverTrailerExtractionDebounceMillis)
-            trailerResolutionPending = true
-            trailerRequestId += 1
-        }
-    }
-
-    LaunchedEffect(
-        trailerRequestId,
-        trailerPlaybackEnabled,
-        item.type,
-        item.id,
-    ) {
-        if (!trailerPlaybackEnabled) {
-            trailerPlaybackSource = null
-            trailerResolutionPending = false
-            return@LaunchedEffect
-        }
-        if (trailerRequestId == 0) return@LaunchedEffect
-        try {
-            trailerPlaybackSource = resolveHomePosterHoverTrailerPlaybackSource(item)
-        } finally {
-            trailerResolutionPending = false
-        }
-    }
-
     val tmdbSettings by TmdbSettingsRepository.uiState.collectAsStateWithLifecycle()
     var previewItem by remember(item, tmdbSettings.language) { mutableStateOf(item) }
-    LaunchedEffect(popupMounted, item, tmdbSettings.language) {
-        if (popupMounted) {
-            try {
-                val details = withTimeoutOrNull(6_000) { MetaDetailsRepository.fetch(type = item.type, id = item.id) }
-                if (details != null) previewItem = item.withHeroMeta(HomeHeroMeta(details = details))
+    LaunchedEffect(popupMounted, item, tmdbSettings.language, trailerPlaybackEnabled) {
+        trailerPlaybackSource = null
+        if (!popupMounted) return@LaunchedEffect
+        val prepared = async {
+            val details = try {
+                MetaDetailsRepository.peek(item.type, item.id)
+                    ?: withTimeoutOrNull(6_000) { MetaDetailsRepository.fetch(item.type, item.id) }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                // The original poster and actions remain usable if metadata is unavailable.
-            }
+                null
+            } ?: return@async null
+            previewItem = item.withHeroMeta(HomeHeroMeta(details = details))
+            val trailer = selectHeroTrailer(details.trailers, tmdbSettings.language)
+            selectedTrailer = trailer
+            if (trailerPlaybackEnabled && trailer != null) resolveHomePosterHoverTrailerPlaybackSource(trailer) else null
         }
+        delay((HoverTrailerStartDelayMillis - posterCardStyle.hoverPreviewOpenDelayMillis).coerceAtLeast(0L))
+        trailerPlaybackSource = prepared.await()
     }
 
     LaunchedEffect(popupMounted, item.type, item.id) {
@@ -299,14 +297,14 @@ internal fun HomePosterHoverPreview(
         }
     }
 
+    var anchorBounds by remember { mutableStateOf(Rect.Zero) }
     Box(modifier = modifier) {
-        content(Modifier.hoverable(anchorInteractionSource))
+        content(Modifier.hoverable(anchorInteractionSource).onGloballyPositioned {
+            anchorBounds = it.boundsInWindow()
+        })
 
         if (popupMounted) {
-            Popup(
-                popupPositionProvider = positionProvider,
-                properties = PopupProperties(focusable = false),
-            ) {
+            val panel: @Composable () -> Unit = {
                 AnimatedVisibility(
                     visible = previewVisible,
                     enter = fadeIn(
@@ -341,6 +339,7 @@ internal fun HomePosterHoverPreview(
                         item = previewItem,
                         isWatched = isWatched,
                         isSaved = previewIsSaved,
+                        youtubeUrl = selectedTrailer?.youtubePlaybackUrl(),
                         trailerEnabled = trailerPlaybackEnabled,
                         trailerSoundEnabled = posterCardStyle.hoverPreviewTrailerSoundEnabled,
                         trailerStartSeconds = posterCardStyle.hoverPreviewTrailerStartSeconds,
@@ -359,6 +358,18 @@ internal fun HomePosterHoverPreview(
                     )
                 }
             }
+            if (session == null) {
+                Popup(positionProvider, properties = PopupProperties(focusable = false), content = panel)
+            } else {
+                val currentPanel = rememberUpdatedState(panel)
+                val overlay = remember(anchorBounds, positionProvider) {
+                    PosterOverlay(anchorBounds, positionProvider) { currentPanel.value() }
+                }
+                DisposableEffect(session, overlay) {
+                    session.overlay = overlay
+                    onDispose { if (session.overlay === overlay) session.overlay = null }
+                }
+            }
         }
     }
 
@@ -375,6 +386,7 @@ private fun HomePosterPreviewCard(
     item: MetaPreview,
     isWatched: Boolean,
     isSaved: Boolean,
+    youtubeUrl: String?,
     trailerEnabled: Boolean,
     trailerSoundEnabled: Boolean,
     trailerStartSeconds: Int,
@@ -392,9 +404,23 @@ private fun HomePosterPreviewCard(
     var logoLoadError by remember(item.type, item.id, item.logo) { mutableStateOf(false) }
     val logoUrl = item.logo?.takeIf { it.isNotBlank() && !logoLoadError }
 
-    Column(
-        modifier = modifier
-            .width(HoverPreviewWidth)
+    val session = LocalDesktopPreview.current
+    var bounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+    val playing = trailerEnabled && trailerPlaybackSource != null && youtubeUrl != null && session != null
+    if (playing && bounds.width > 0 && bounds.height > 0) {
+        val source = checkNotNull(trailerPlaybackSource)
+        LaunchedEffect(source, bounds) {
+            if (!session!!.expanded) session.request = DesktopTrailerRequest(item.name, youtubeUrl!!, source,
+                trailerStartSeconds * 1000L, !trailerSoundEnabled, bounds)
+        }
+        DisposableEffect(source) {
+            onDispose { if (session?.expanded == false && session.request?.source == source) {
+                session.request = null
+                session.pointerInside = false
+            } }
+        }
+    }
+    val frame = Modifier.width(HoverPreviewWidth)
             .shadow(tokens.elevation.overlay, shape)
             .clip(shape)
             .background(previewBackground)
@@ -406,12 +432,11 @@ private fun HomePosterPreviewCard(
             ) {
                 onClick?.invoke()
             }
-            .secondaryClick(onLongClick),
-    ) {
+            .secondaryClick(onLongClick)
+    Column(modifier.then(frame)) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
+                .fillMaxWidth().aspectRatio(16f / 9f).onGloballyPositioned { bounds = it.boundsInWindow() }
                 .background(tokens.colors.surface),
         ) {
             val artworkUrl = item.banner ?: item.poster
@@ -425,61 +450,54 @@ private fun HomePosterPreviewCard(
                 )
             }
 
-            if (trailerEnabled) {
-                HomePosterHoverTrailer(
-                    playbackSource = trailerPlaybackSource,
-                    soundEnabled = trailerSoundEnabled,
-                    startPositionSeconds = trailerStartSeconds,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0f to Color.Transparent,
-                                0.58f to previewBackground.copy(alpha = 0.08f),
-                                1f to previewBackground.copy(alpha = 0.94f),
+            if (!playing) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Transparent,
+                                    0.58f to previewBackground.copy(alpha = 0.08f),
+                                    1f to previewBackground.copy(alpha = 0.94f),
+                                ),
                             ),
                         ),
-                    ),
-            )
-
-            if (logoUrl != null) {
-                NuvioAsyncImage(
-                    model = logoUrl,
-                    contentDescription = stringResource(Res.string.poster_logo_content_description, item.name),
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = NuvioTokens.Space.s18, bottom = NuvioTokens.Space.s14)
-                        .width(180.dp)
-                        .height(52.dp),
-                    alignment = Alignment.CenterStart,
-                    contentScale = ContentScale.Fit,
-                    clipToBounds = false,
-                    onError = { logoLoadError = true },
                 )
-            } else {
-                Text(
-                    text = item.name,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(horizontal = NuvioTokens.Space.s18, vertical = NuvioTokens.Space.s16),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = tokens.colors.textPrimary,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+
+                if (logoUrl != null) {
+                    NuvioAsyncImage(
+                        model = logoUrl,
+                        contentDescription = stringResource(Res.string.poster_logo_content_description, item.name),
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = NuvioTokens.Space.s18, bottom = NuvioTokens.Space.s14)
+                            .width(180.dp)
+                            .height(52.dp),
+                        alignment = Alignment.CenterStart,
+                        contentScale = ContentScale.Fit,
+                        clipToBounds = false,
+                        onError = { logoLoadError = true },
+                    )
+                } else {
+                    Text(
+                        text = item.name,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(horizontal = NuvioTokens.Space.s18, vertical = NuvioTokens.Space.s16),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = tokens.colors.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                NuvioPosterWatchedOverlay(
+                    isWatched = isWatched,
+                    padding = NuvioTokens.Space.s10,
                 )
             }
-
-            NuvioPosterWatchedOverlay(
-                isWatched = isWatched,
-                padding = NuvioTokens.Space.s10,
-            )
         }
 
         Column(

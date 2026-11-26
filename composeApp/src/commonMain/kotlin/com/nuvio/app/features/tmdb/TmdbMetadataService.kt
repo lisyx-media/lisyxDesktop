@@ -12,6 +12,8 @@ import com.nuvio.app.features.details.MetaCompany
 import com.nuvio.app.features.details.MetaDetails
 import com.nuvio.app.features.details.MetaPerson
 import com.nuvio.app.features.details.MetaTrailer
+import com.nuvio.app.features.details.isPromoCut
+import com.nuvio.app.features.details.audioLanguagePriority
 import com.nuvio.app.features.details.MetaVideo
 import com.nuvio.app.features.details.MoreLikeThisSource
 import com.nuvio.app.features.details.PersonDetail
@@ -1562,6 +1564,8 @@ object TmdbMetadataService {
                             else -> 2
                         }
                     }
+                    .thenByDescending { it.audioLanguagePriority(preferredLang) }
+                    .thenBy { it.isPromoCut() }
                     .thenByDescending { it.official }
                     .thenByDescending { it.publishedAt.orEmpty() }
             )

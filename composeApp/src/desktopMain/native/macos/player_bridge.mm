@@ -678,7 +678,6 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     self.wantsLayer = YES;
     _openGLLayer = [[NuvioPlayerOpenGLLayer alloc] initWithOwner:self];
-    _openGLLayer.frame = self.bounds;
     _openGLLayer.contentsGravity = kCAGravityResize;
     self.layer = _openGLLayer;
     [self updateMetalLayerLayout];
@@ -758,7 +757,6 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     [CATransaction setDisableActions:YES];
     _openGLLayer.nuvioLiveResize = liveResize;
     _openGLLayer.contentsScale = scale;
-    _openGLLayer.frame = self.bounds;
     if (!liveResize) {
         [self refreshMetalLayerEdrState];
         [_openGLLayer requestRenderForced:NO];
@@ -923,6 +921,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 
 @implementation MpvWebPlayer {
     NSView *_hostView;
+    NSRect _previewScreenFrame;
     PlayerMetalView *_videoView;
     WKWebView *_webView;
     PlayerScriptHandler *_scriptHandler;
@@ -1040,13 +1039,18 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     _eventSink = eventSink;
     _eventMethod = eventMethod;
 
+    NSArray *fragment = [[[NSURL URLWithString:controlsUrl] fragment] componentsSeparatedByString:@"="];
+    if (fragment.count == 2 && [fragment.firstObject isEqualToString:@"preview"]) {
+        NSArray *values = [fragment.lastObject componentsSeparatedByString:@","];
+        if (values.count == 4) _previewScreenFrame = NSMakeRect([values[0] doubleValue], [values[1] doubleValue], [values[2] doubleValue], [values[3] doubleValue]);
+    }
     _hostView = hostView;
     _hostView.wantsLayer = YES;
     _hostView.layer.backgroundColor = NSColor.blackColor.CGColor;
     [_hostView setPostsFrameChangedNotifications:YES];
     [_hostView setPostsBoundsChangedNotifications:YES];
 
-    _videoView = [[PlayerMetalView alloc] initWithFrame:_hostView.bounds];
+    _videoView = [[PlayerMetalView alloc] initWithFrame:[self playbackFrame]];
     [_hostView addSubview:_videoView];
 
     _scriptHandler = [PlayerScriptHandler new];
@@ -1056,7 +1060,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 
     WKWebViewConfiguration *configuration = [WKWebViewConfiguration new];
     configuration.userContentController = contentController;
-    _webView = [[PlayerControlsWebView alloc] initWithFrame:_hostView.bounds configuration:configuration];
+    _webView = [[PlayerControlsWebView alloc] initWithFrame:[self playbackFrame] configuration:configuration];
     _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     _webView.wantsLayer = YES;
     [_webView setValue:@NO forKey:@"drawsBackground"];
@@ -1385,11 +1389,19 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         || (_windowTrackingMonitor && _windowTrackingEdge != 0);
 }
 
+// AWT provides the window NSView on macOS, including for an embedded Canvas.
+- (NSRect)playbackFrame {
+    if (NSIsEmptyRect(_previewScreenFrame) || !_hostView.window) return _hostView.bounds;
+    NSRect screen = _previewScreenFrame;
+    screen.origin.y = NSMaxY(NSScreen.screens.firstObject.frame) - NSMaxY(screen);
+    return [_hostView convertRect:[_hostView.window convertRectFromScreen:screen] fromView:nil];
+}
+
 - (void)layoutNativeSubviews {
     if (!_hostView) {
         return;
     }
-    NSRect bounds = _hostView.bounds;
+    NSRect bounds = [self playbackFrame];
     if (bounds.size.width <= 0.0 || bounds.size.height <= 0.0) {
         return;
     }
@@ -1571,7 +1583,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         return;
     }
     _lightweightResizeSettleUntil = 0.0;
-    [self layoutControlsWebViewToBounds:_hostView.bounds immediate:YES];
+    [self layoutControlsWebViewToBounds:[self playbackFrame] immediate:YES];
     [_videoView setFullscreenTransitionActive:NO];
     [_videoView updateMetalLayerLayout];
     NSString *reason = [NSString stringWithFormat:@"resize-settled/%@", timer.userInfo ?: @"unknown"];
@@ -1936,6 +1948,12 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     }
     NSDictionary *controls = [NSJSONSerialization JSONObjectWithData:[controlsJson dataUsingEncoding:NSUTF8StringEncoding]
                                                                options:0 error:nullptr];
+    NSArray *frame = controls[@"previewFrame"];
+    NSRect next = frame.count == 4 ? NSMakeRect([frame[0] doubleValue], [frame[1] doubleValue], [frame[2] doubleValue], [frame[3] doubleValue]) : NSZeroRect;
+    if (!NSEqualRects(next, _previewScreenFrame)) {
+        _previewScreenFrame = next;
+        [self layoutNativeSubviews];
+    }
     _trailerControlsActive = [controls[@"trailerMode"] boolValue];
     _pendingControlsJson = [controlsJson copy];
     [self flushPendingControlsJsonIfReady];

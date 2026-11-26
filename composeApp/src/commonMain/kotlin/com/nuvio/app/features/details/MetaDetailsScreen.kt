@@ -774,7 +774,7 @@ fun MetaDetailsScreen(
                 var trailerRequestToken by remember(meta.id) { mutableIntStateOf(0) }
                 var isLeavingDetails by remember(meta.id) { mutableStateOf(false) }
                 val heroTrailerCandidate = remember(meta.trailers) {
-                    selectHeroTrailer(meta.trailers)
+                    selectHeroTrailer(meta.trailers, TmdbSettingsRepository.snapshot().language)
                 }
                 LaunchedEffect(isDesktop, inAppTrailerPlaybackEnabled, deferredMetaWorkAllowed, heroTrailerCandidate?.key) {
                     val candidate = heroTrailerCandidate
