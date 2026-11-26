@@ -6,4 +6,6 @@ internal actual object LisyServerStorage {
     fun initialize(context: Context) { preferences = context.getSharedPreferences("lisy_servers", Context.MODE_PRIVATE) }
     actual fun load(profileId: Int): String? = preferences?.getString("server_$profileId", null)
     actual fun save(profileId: Int, value: String?) { checkNotNull(preferences).edit().putString("server_$profileId", value).apply() }
+    actual fun loadTvPreference(key: String): String? = preferences?.getString(key, null)
+    actual fun saveTvPreference(key: String, value: String) { preferences?.edit()?.putString(key, value)?.apply() }
 }

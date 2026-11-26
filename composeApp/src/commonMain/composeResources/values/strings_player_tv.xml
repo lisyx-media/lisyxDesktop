@@ -1,0 +1,7 @@
+<resources>
+    <string name="player_tv_programme_guide">Programme guide</string>
+    <string name="player_tv_stream_quality">Stream quality</string>
+    <string name="player_tv_auto_source">Automatic</string>
+    <string name="player_tv_source_connecting">Connecting to stream…</string>
+    <string name="player_tv_source_failed">This stream is unavailable. Try another quality.</string>
+</resources>

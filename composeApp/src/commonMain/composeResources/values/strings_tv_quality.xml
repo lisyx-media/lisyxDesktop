@@ -1,0 +1,8 @@
+<resources>
+    <string name="tv_source_quality">Stream quality</string>
+    <string name="tv_source_auto">Auto</string>
+    <string name="tv_preview_mute">Mute preview</string>
+    <string name="tv_preview_unmute">Unmute preview</string>
+    <string name="tv_live_all_streams_failed">None of the streams for %1$s could play.</string>
+    <string name="tv_live_selected_stream_failed">The selected stream for %1$s could not play.</string>
+</resources>

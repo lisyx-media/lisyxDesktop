@@ -303,7 +303,34 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
             title = chapter.title ?: stringResource(Res.string.compose_player_chapter_number, index + 1),
         )
     }
+    val tvChannelId = parentMetaId.takeIf { isDesktop && parentMetaType == "tv" && it.startsWith("lisy-tv:") }
+        ?.removePrefix("lisy-tv:")
+    val tvSchedule = if (tvChannelId != null) rememberPlayerTvSchedule(tvChannelId) else emptyList()
+    val liveTv = tvChannelId != null && args.videoId == null
+    val initialTried = remember(args.launchId, liveTv) {
+        if (liveTv) args.launchId?.let(PlayerLaunchStore::get)?.liveTvAttemptedIds.orEmpty() else emptySet()
+    }
+    val tvSources = if (tvChannelId != null && liveTv) {
+        rememberPlayerTvSources(tvChannelId, args.sourceUrl, initialTried) { url ->
+            errorMessage = null
+            shouldPlay = true
+            if (url == activeSourceUrl) playerController?.retry()
+            activeInitialPositionMs = 0
+            activeInitialProgressFraction = null
+            activeSourceUrl = url
+            controlsVisible = true
+            playerControlsCloseModalsToken++
+        }
+    } else null
+    val sourcesLabel = if (tvSources != null) stringResource(Res.string.player_tv_stream_quality)
+        else stringResource(Res.string.compose_player_sources)
     val playerControlsState = PlayerControlsState(
+        tvSourceContext = tvSources?.context.orEmpty(),
+        liveTvActive = liveTv,
+        liveTvRetryAvailable = tvSources?.terminalError != null,
+        tvGuideLabel = if (tvChannelId != null) stringResource(Res.string.player_tv_programme_guide) else "",
+        tvGuideEmptyLabel = if (tvChannelId != null) stringResource(Res.string.lisy_tv_no_programme) else "",
+        tvGuideProgrammes = tvSchedule,
         chapters = controlChapters,
         chaptersLabel = stringResource(Res.string.compose_player_chapters),
         chaptersPanelTitle = stringResource(Res.string.compose_player_panel_chapters, chapters.size),
@@ -331,7 +358,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         holdToSpeedValue = playerSettingsUiState.holdToSpeedValue,
         subtitlesLabel = stringResource(Res.string.compose_player_subs),
         audioLabel = stringResource(Res.string.compose_player_audio),
-        sourcesLabel = stringResource(Res.string.compose_player_sources),
+        sourcesLabel = sourcesLabel,
         episodesLabel = stringResource(Res.string.compose_player_episodes),
         externalPlayerLabel = stringResource(Res.string.streams_open_external_player),
         playLabel = stringResource(Res.string.detail_btn_play),
@@ -349,9 +376,9 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
         pipRestoreLabel = stringResource(Res.string.compose_player_pip_restore),
         pipWindowTitle = stringResource(Res.string.compose_player_pip_window_title),
         playbackErrorTitle = stringResource(Res.string.compose_player_playback_error),
-        playbackErrorMessage = errorMessage.orEmpty(),
-        playbackErrorActionLabel = stringResource(Res.string.compose_player_go_back),
-        sourcesPanelTitle = stringResource(Res.string.compose_player_panel_sources),
+        playbackErrorMessage = tvSources?.terminalError ?: errorMessage.orEmpty(),
+        playbackErrorActionLabel = stringResource(if (tvSources?.terminalError != null) Res.string.action_retry else Res.string.compose_player_go_back),
+        sourcesPanelTitle = if (tvSources != null) sourcesLabel else stringResource(Res.string.compose_player_panel_sources),
         episodesPanelTitle = stringResource(Res.string.compose_player_panel_episodes),
         streamsPanelTitle = stringResource(Res.string.compose_player_panel_streams),
         allFilterLabel = allFilterLabel,
@@ -453,15 +480,15 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
             playerSettingsUiState.introDbApiKey.isNotBlank() &&
             !activeSubmitIntroImdbId().isNullOrBlank(),
         showVideoSettings = isIos,
-        showSources = activeVideoId != null,
+        showSources = if (tvChannelId == null) activeVideoId != null else tvSources != null,
         showEpisodes = isSeries,
         showExternalPlayer = args.onOpenInExternalPlayer != null,
         durationMs = playbackSnapshot.durationMs,
         positionMs = displayedPositionMs,
         bufferedPositionMs = playbackSnapshot.bufferedPositionMs.coerceAtLeast(0L),
         sourceIsLoading = sourceStreamsState.isAnyLoading,
-        sourceFilters = sourceFilters,
-        sourceItems = sourceItems,
+        sourceFilters = if (tvSources == null) sourceFilters else emptyList(),
+        sourceItems = tvSources?.items ?: sourceItems,
         episodeItems = episodeItems,
         episodeSeasons = episodeSeasons,
         episodeStreamsVisible = episodeStreamsPanelState.showStreams,
@@ -631,8 +658,19 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
                 resizeMode = if (partyPanelInset > 0.dp) PlayerResizeMode.Fit else resizeMode,
                 playbackEngine = playbackEngineOverride ?: resolvedAutoEngine,
                 playerControlsState = playerControlsState,
-                onPlayerControlsAction = { action -> handlePlayerControlsAction(action) },
-                onPlayerControlsEvent = { type, value -> handlePlayerControlsEvent(type, value) },
+                onPlayerControlsAction = { action ->
+                    if (tvSources != null && action == PlayerControlsAction.Sources) true
+                    else handlePlayerControlsAction(action)
+                },
+                onPlayerControlsEvent = { type, value ->
+                    if (tvSources != null && type == "retryLiveTv") {
+                        tvSources.retry()
+                        true
+                    } else if (tvSources != null && type == "selectSource") {
+                        tvSources.select(value.toInt())
+                        true
+                    } else handlePlayerControlsEvent(type, value)
+                },
                 onPlayerControlsScrubChange = { positionMs ->
                     handlePlayerControlsScrubChange(positionMs)
                     true
@@ -653,14 +691,19 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
                 },
                 onSnapshot = { snapshot ->
                     if (!updatePlaybackSnapshot(snapshot)) return@PlatformPlayerSurface
+                    tvSources?.observe?.invoke(surfaceSource?.sourceUrl.orEmpty(), snapshot, shouldPlay)
                     refreshAudioTracksIfChanged()
                     if (!snapshot.isLoading) initialLoadCompleted = true
-                    if (snapshot.isEnded) {
+                    if (snapshot.isEnded && !liveTv) {
                         shouldPlay = false
                         controlsVisible = !playerControlsLocked
                     }
                 },
                 onError = { message ->
+                    if (message != null && tvSources != null) {
+                        tvSources.fail(surfaceSource?.sourceUrl.orEmpty())
+                        return@PlatformPlayerSurface
+                    }
                     if (message != null && tryRefreshCredentialedSourceAfterError(message)) {
                         return@PlatformPlayerSurface
                     }

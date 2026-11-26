@@ -50,6 +50,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 @class NuvioPlayerOpenGLLayer;
 
 @interface PlayerMetalView : NSView
+- (int64_t)liveRenderedFrames;
 - (double)edrMax;
 - (double)edrHeadroom;
 - (CGSize)drawableSize;
@@ -70,6 +71,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 @interface NuvioPlayerOpenGLLayer : CAOpenGLLayer
 @property(nonatomic, assign, getter=isNuvioLiveResize) BOOL nuvioLiveResize;
 @property(nonatomic, assign, readonly) GLint bufferDepth;
+- (int64_t)liveRenderedFrames;
 - (instancetype)initWithOwner:(PlayerMetalView *)owner;
 - (void)setMpvRenderContext:(mpv_render_context *)renderContext;
 - (void)clearMpvRenderContext;
@@ -147,6 +149,7 @@ static constexpr double kMaxVolumePercent = 200.0;
 - (long long)bufferedPositionMs;
 - (BOOL)isLoading;
 - (BOOL)isEnded;
+- (int64_t)liveVideoSignal;
 - (NSString *)audioTracksJson;
 - (NSString *)subtitleTracksJson;
 - (void)selectAudioTrackId:(int)trackId;
@@ -436,6 +439,8 @@ static void *mpvOpenGLGetProcAddress(void *ctx, const char *name) {
     std::atomic_bool _needsFlip;
     std::atomic_bool _forceDraw;
     std::atomic_bool _renderQueued;
+    std::atomic_bool _monitorLiveFrames;
+    std::atomic<int64_t> _liveFrameCount;
 }
 
 @synthesize nuvioLiveResize = _nuvioLiveResize;
@@ -447,6 +452,8 @@ static void *mpvOpenGLGetProcAddress(void *ctx, const char *name) {
         return nil;
     }
     _owner = owner;
+    _monitorLiveFrames.store(false);
+    _liveFrameCount.store(0);
     _renderQueue = dispatch_queue_create("com.nuvio.player.mpvgl", DISPATCH_QUEUE_SERIAL);
     dispatch_set_target_queue(_renderQueue, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0));
     _displayLock = [NSRecursiveLock new];
@@ -559,10 +566,25 @@ static void *mpvOpenGLGetProcAddress(void *ctx, const char *name) {
         { MPV_RENDER_PARAM_DEPTH, &depth },
         { MPV_RENDER_PARAM_INVALID, nullptr }
     };
-    mpv_render_context_render(renderContext, params);
+    bool freshFrame = false;
+    if (_monitorLiveFrames.load(std::memory_order_relaxed)) {
+        mpv_render_frame_info info = {};
+        mpv_render_param next = { MPV_RENDER_PARAM_NEXT_FRAME_INFO, &info };
+        if (mpv_render_context_get_info(renderContext, next) >= 0) {
+            freshFrame = (info.flags & MPV_RENDER_FRAME_INFO_PRESENT)
+                && !(info.flags & (MPV_RENDER_FRAME_INFO_REDRAW | MPV_RENDER_FRAME_INFO_REPEAT));
+        }
+    }
+    int result = mpv_render_context_render(renderContext, params);
+    if (freshFrame && result >= 0) _liveFrameCount.fetch_add(1, std::memory_order_relaxed);
     mpv_render_context_report_swap(renderContext);
     glFlush();
     [_renderLock unlock];
+}
+
+- (int64_t)liveRenderedFrames {
+    _monitorLiveFrames.store(true, std::memory_order_relaxed);
+    return _liveFrameCount.load(std::memory_order_relaxed);
 }
 
 - (void)display {
@@ -662,6 +684,8 @@ static void mpvRenderUpdateCallback(void *callbackContext) {
     [self updateMetalLayerLayout];
     return self;
 }
+
+- (int64_t)liveRenderedFrames { return [_openGLLayer liveRenderedFrames]; }
 
 - (BOOL)isOpaque {
     return YES;
@@ -968,6 +992,8 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     std::atomic_bool _cachedPaused;
     std::atomic_bool _cachedLoading;
     std::atomic_bool _cachedEnded;
+    std::atomic_bool _liveStreamEnded;
+    std::atomic_bool _videoOccluded;
     BOOL _hasAppliedSubtitleStyle;
     BOOL _appliedSubtitleUseLibass;
     NSString *_appliedSubtitleTextColor;
@@ -1003,6 +1029,8 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     _cachedPaused.store(!playWhenReady);
     _cachedLoading.store(true);
     _cachedEnded.store(false);
+    _videoOccluded.store(false);
+    _liveStreamEnded.store(false);
     _mpvEventQueue = dispatch_queue_create("com.nuvio.desktop.mpv-events", DISPATCH_QUEUE_SERIAL);
     _mpvDrainQueue = dispatch_queue_create("com.nuvio.desktop.mpv-drain", DISPATCH_QUEUE_SERIAL);
     _mpvDrainStopped.store(false);
@@ -1653,6 +1681,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     if (!_webView || !_mpv) {
         return;
     }
+    _videoOccluded.store(!(_videoView.window.occlusionState & NSWindowOcclusionStateVisible));
     [self layoutNativeSubviews];
     [self focusControlsWebViewIfNeeded];
     if (_controlsSyncInFlight || !_mpvEventQueue) {
@@ -2074,6 +2103,16 @@ static void nuvioMpvWakeup(void *ctx) {
         mpv_event *event = mpv_wait_event(mpv, 0);
         if (!event || event->event_id == MPV_EVENT_NONE) break;
         switch (event->event_id) {
+            case MPV_EVENT_START_FILE:
+                _liveStreamEnded.store(false);
+                break;
+            case MPV_EVENT_END_FILE: {
+                auto *end = static_cast<mpv_event_end_file *>(event->data);
+                if (end && (end->reason == MPV_END_FILE_REASON_ERROR || end->reason == MPV_END_FILE_REASON_EOF)) {
+                    _liveStreamEnded.store(true);
+                }
+                break;
+            }
             case MPV_EVENT_PROPERTY_CHANGE: {
                 mpv_event_property *prop = (mpv_event_property *)event->data;
                 if (event->reply_userdata == 2 && prop && prop->format == MPV_FORMAT_STRING) {
@@ -2293,6 +2332,12 @@ static void nuvioMpvWakeup(void *ctx) {
     BOOL fileReady = duration > 0.0
         || [self int64Property:"track-list/count" fallback:0] > 0;
     return !fileReady || (idle && !paused && !eofReached) || bufferingCache;
+}
+
+- (int64_t)liveVideoSignal {
+    if (_liveStreamEnded.load()) return -1;
+    if (_videoOccluded.load()) return -2;
+    return [_videoView liveRenderedFrames];
 }
 
 - (BOOL)isEnded {
@@ -3461,6 +3506,12 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_audioTracksJson(
     return env->NewStringUTF(json.UTF8String);
 }
 
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_liveVideoSignal(JNIEnv *, jobject, jlong handle) {
+    MpvWebPlayer *player = (__bridge MpvWebPlayer *)(void *)(intptr_t)handle;
+    return [player liveVideoSignal];
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_stringProperty(
     JNIEnv *env,
@@ -3655,4 +3706,89 @@ Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_setSubtitleAppeara
                                     shadowColor:[NSString stringWithUTF8String:shadow.c_str()]
                                    shadowOffset:(double)shadowOffset];
     });
+}
+
+// The preview uses the bundled decoder without creating a window.
+struct LivePreview {
+    bool muted = false;
+    mpv_handle *player = nullptr;
+    mpv_render_context *render = nullptr;
+    std::atomic_bool dirty{true};
+    bool hasVideo = false;
+
+    ~LivePreview() {
+        if (render) mpv_render_context_free(render);
+        if (player) mpv_terminate_destroy(player);
+    }
+};
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_openLivePreview(JNIEnv *env, jobject, jstring url, jboolean muted) {
+    setlocale(LC_NUMERIC, "C");
+    auto *preview = new LivePreview;
+    preview->player = mpv_create();
+    auto *player = preview->player;
+    if (!player) { delete preview; return 0; }
+    mpv_set_option_string(player, "config", "no");
+    mpv_set_option_string(player, "vo", "libmpv");
+    preview->muted = muted == JNI_TRUE;
+    mpv_set_option_string(player, "mute", preview->muted ? "yes" : "no");
+    mpv_set_option_string(player, "sub", "no");
+    mpv_set_option_string(player, "terminal", "no");
+    mpv_set_option_string(player, "demuxer-max-bytes", "8MiB");
+    mpv_set_option_string(player, "network-timeout", "6");
+    if (mpv_initialize(player) < 0) { delete preview; return 0; }
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_SW}, {MPV_RENDER_PARAM_INVALID, nullptr}
+    };
+    if (mpv_render_context_create(&preview->render, player, params) < 0) { delete preview; return 0; }
+    mpv_render_context_set_update_callback(preview->render, [](void *ctx) {
+        static_cast<LivePreview *>(ctx)->dirty.store(true);
+    }, preview);
+    std::string source = jstringToString(env, url);
+    const char *command[] = {"loadfile", source.c_str(), nullptr};
+    if (mpv_command_async(player, 0, command) < 0) { delete preview; return 0; }
+    return reinterpret_cast<jlong>(preview);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_readLivePreview(
+    JNIEnv *env, jobject, jlong handle, jobject buffer, jint width, jint height, jboolean muted
+) {
+    auto *p = reinterpret_cast<LivePreview *>(handle);
+    auto *bytes = env->GetDirectBufferAddress(buffer);
+    if (!p || !bytes || width < 1 || height < 1 ||
+        env->GetDirectBufferCapacity(buffer) < static_cast<jlong>(width) * height * 4) return -1;
+    bool requestedMute = muted == JNI_TRUE;
+    if (p->muted != requestedMute) {
+        int flag = requestedMute;
+        if (mpv_set_property_async(p->player, 0, "mute", MPV_FORMAT_FLAG, &flag) >= 0) p->muted = requestedMute;
+    }
+    while (true) {
+        auto *event = mpv_wait_event(p->player, 0);
+        if (event->event_id == MPV_EVENT_NONE) break;
+        if (event->event_id == MPV_EVENT_END_FILE || event->event_id == MPV_EVENT_SHUTDOWN) return -1;
+        if (event->event_id == MPV_EVENT_VIDEO_RECONFIG) p->hasVideo = true;
+    }
+    if (!p->dirty.exchange(false)) return 0;
+    if (!(mpv_render_context_update(p->render) & MPV_RENDER_UPDATE_FRAME)) return 0;
+    int size[] = {width, height};
+    size_t stride = static_cast<size_t>(width) * 4;
+    int block = 0;
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_SW_SIZE, size}, {MPV_RENDER_PARAM_SW_FORMAT, (void *)"bgr0"},
+        {MPV_RENDER_PARAM_SW_STRIDE, &stride}, {MPV_RENDER_PARAM_SW_POINTER, bytes},
+        {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block}, {MPV_RENDER_PARAM_INVALID, nullptr}
+    };
+    if (mpv_render_context_render(p->render, params) < 0) return -1;
+    if (!p->hasVideo) return 0;
+    // mpv leaves the fourth byte of bgr0 undefined. Compose composites these pixels over the card.
+    auto *pixels = static_cast<uint32_t *>(bytes);
+    for (size_t i = 0; i < static_cast<size_t>(width) * height; ++i) pixels[i] |= 0xff000000u;
+    return 1;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_player_desktop_NativePlayerBridge_closeLivePreview(JNIEnv *, jobject, jlong handle) {
+    delete reinterpret_cast<LivePreview *>(handle);
 }

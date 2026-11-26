@@ -172,6 +172,8 @@ private fun NativePlayerSurface(
     val latestOnPlayerControlsScrubFinished = rememberUpdatedState(onPlayerControlsScrubFinished)
     val latestOnInitialPositionHandled = rememberUpdatedState(onInitialPositionHandled)
     val latestOnError = rememberUpdatedState(onError)
+    val latestOnSnapshot = rememberUpdatedState(onSnapshot)
+    val liveUrl = rememberUpdatedState(sourceUrl.takeIf { controlsState.liveTvActive })
     val playerSettings by PlayerSettingsRepository.uiState.collectAsState()
     val decoderPriority = playerSettings.decoderPriority
     val nvidiaRtxSuperResolutionEnabled = playerSettings.nvidiaRtxSuperResolutionEnabled
@@ -298,7 +300,7 @@ private fun NativePlayerSurface(
 
     LaunchedEffect(controller) {
         while (true) {
-            if (!controller.isReleasing) onSnapshot(controller.snapshot())
+            if (!controller.isReleasing) latestOnSnapshot.value(controller.snapshot(liveUrl.value))
             delay(250L)
         }
     }

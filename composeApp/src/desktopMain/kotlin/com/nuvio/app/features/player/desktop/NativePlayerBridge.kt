@@ -61,6 +61,10 @@ internal object NativePlayerBridge {
         eventSink: NativePlayerEventSink,
     ): Long
 
+    external fun openLivePreview(url: String, muted: Boolean): Long
+    external fun readLivePreview(handle: Long, target: java.nio.ByteBuffer, width: Int, height: Int, muted: Boolean): Int
+    external fun closeLivePreview(handle: Long)
+
     external fun dispose(handle: Long)
     external fun updateControls(handle: Long, controlsJson: String)
 
@@ -92,6 +96,7 @@ internal object NativePlayerBridge {
     external fun speed(handle: Long): Float
     external fun audioTracksJson(handle: Long): String
     external fun subtitleTracksJson(handle: Long): String
+    external fun liveVideoSignal(handle: Long): Long
     external fun stringProperty(handle: Long, name: String): String
     external fun selectAudioTrack(handle: Long, trackId: Int)
     external fun setAudioLanguages(handle: Long, languages: String)

@@ -97,6 +97,8 @@ data class PlayerControlSubtitleFont(
     val label: String,
 )
 
+data class PlayerGuideProgramme(val title: String, val startSeconds: Long, val endSeconds: Long)
+
 data class PlayerControlChapter(
     val startMs: Long,
     val title: String,
@@ -316,6 +318,12 @@ data class PlayerControlsState(
     val notificationToken: Long = 0L,
     val party: PlayerControlPartyState = PlayerControlPartyState(),
     val badges: List<StreamBadge> = emptyList(),
+    val tvSourceContext: String = "",
+    val liveTvActive: Boolean = false,
+    val liveTvRetryAvailable: Boolean = false,
+    val tvGuideLabel: String = "",
+    val tvGuideEmptyLabel: String = "",
+    val tvGuideProgrammes: List<PlayerGuideProgramme> = emptyList(),
     val chapters: List<PlayerControlChapter> = emptyList(),
     val chaptersLabel: String = "Chapters",
     val chaptersPanelTitle: String = "Chapters",

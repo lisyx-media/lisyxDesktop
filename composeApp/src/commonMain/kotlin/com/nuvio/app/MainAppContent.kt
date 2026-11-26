@@ -907,6 +907,24 @@ internal fun MainAppContent(
             navController.navigate(PlayerRoute(launchId = launchId, title = playerLaunch.title))
         }
 
+        fun playTvChannel(id: String, title: String, url: String, logo: String?, programmeId: String? = null, tried: Set<String> = emptySet()) {
+            val launch = PlayerLaunch(
+                profileId = activePlaybackProfileId,
+                title = title,
+                sourceUrl = url,
+                logo = logo,
+                streamTitle = title,
+                providerName = "Lisy",
+                liveTvAttemptedIds = tried,
+                parentMetaId = "lisy-tv:$id",
+                parentMetaType = "tv",
+                contentType = "tv",
+                videoId = programmeId?.let { "lisy-replay:$id:$it" },
+            )
+            val launchId = PlayerLaunchStore.put(launch)
+            navController.navigate(PlayerRoute(launchId = launchId, title = title))
+        }
+
         fun openExternalStreamUrl(url: String): Boolean {
             val opened = runCatching {
                 uriHandler.openUri(url)
@@ -1437,19 +1455,9 @@ internal fun MainAppContent(
                                     )
                                 },
                                 onLibrarySectionViewAllClick = onLibrarySectionViewAllClick,
-                                onTvPlay = { id, title, url, logo ->
-                                    val launch = PlayerLaunch(
-                                        profileId = activePlaybackProfileId,
-                                        title = title,
-                                        sourceUrl = url,
-                                        logo = logo,
-                                        streamTitle = title,
-                                        providerName = "Lisy",
-                                        parentMetaId = "lisy-tv:$id",
-                                        parentMetaType = "tv",
-                                    )
-                                    val launchId = PlayerLaunchStore.put(launch)
-                                    navController.navigate(PlayerRoute(launchId = launchId, title = title))
+                                onTvPlay = { id, title, url, logo, tried -> playTvChannel(id, title, url, logo, tried = tried) },
+                                onTvReplayPlay = { channel, programmeId, title, url ->
+                                    playTvChannel(channel.id, title, url, channel.logo, programmeId)
                                 },
                                 onCloudFilePlay = { item, file ->
                                     coroutineScope.launch {

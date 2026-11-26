@@ -6,4 +6,6 @@ internal actual object LisyServerStorage {
         if (value == null) NSUserDefaults.standardUserDefaults.removeObjectForKey("lisy_server_$profileId")
         else NSUserDefaults.standardUserDefaults.setObject(value, forKey = "lisy_server_$profileId")
     }
+    actual fun loadTvPreference(key: String): String? = NSUserDefaults.standardUserDefaults.stringForKey(key)
+    actual fun saveTvPreference(key: String, value: String) { NSUserDefaults.standardUserDefaults.setObject(value, forKey = key) }
 }

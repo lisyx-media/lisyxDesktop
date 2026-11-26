@@ -161,7 +161,7 @@ internal fun matchesLisyTitle(entry: LisyEntry, id: String, titles: List<String>
     return candidate.isNotBlank() && titles.any { normalized(it) == candidate }
 }
 
-private fun String.foldLisyAccents(): String = map { c ->
+internal fun String.foldLisyAccents(): String = map { c ->
     when (c) {
         in "àáâãäå" -> 'a'
         in "èéêë" -> 'e'

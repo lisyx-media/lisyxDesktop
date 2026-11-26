@@ -51,4 +51,6 @@ internal object LisyServerRepository {
 internal expect object LisyServerStorage {
     fun load(profileId: Int): String?
     fun save(profileId: Int, value: String?)
+    fun loadTvPreference(key: String): String?
+    fun saveTvPreference(key: String, value: String)
 }

@@ -2,7 +2,7 @@
     <string name="lisy_tv">TV</string>
     <string name="lisy_tv_live">Télévision en direct</string>
     <string name="lisy_tv_live_badge">DIRECT</string>
-    <string name="lisy_tv_search">Rechercher une chaîne</string>
+    <string name="lisy_tv_search">Chaîne ou programme</string>
     <string name="lisy_tv_all_countries">Tous les pays</string>
     <string name="lisy_tv_unknown_country">Pays non renseigné</string>
     <string name="lisy_tv_no_category">Sans catégorie</string>
@@ -15,4 +15,26 @@
     <string name="lisy_tv_play">Regarder en direct</string>
     <string name="lisy_tv_favorite">Ajouter aux favoris</string>
     <string name="lisy_tv_unfavorite">Retirer des favoris</string>
+    <string name="lisy_tv_no_programme">Programme indisponible</string>
+    <string name="lisy_tv_title">Télévision</string>
+    <string name="lisy_tv_direct">Direct</string>
+    <string name="lisy_tv_guide">Guide TV</string>
+    <string name="lisy_tv_replay">Replay</string>
+    <string name="lisy_tv_now">En ce moment</string>
+    <string name="lisy_tv_next">À suivre</string>
+    <string name="lisy_tv_view_replay">Voir le replay</string>
+    <string name="lisy_tv_reset">Effacer les filtres</string>
+    <string name="lisy_tv_reset_search">Effacer la recherche</string>
+    <string name="lisy_tv_no_archive_channels">Ton serveur ne signale aucune chaîne avec replay.</string>
+    <string name="lisy_tv_no_archive_programmes">Aucune émission disponible pour cette date.</string>
+    <string name="lisy_tv_close">Fermer</string>
+    <string name="lisy_tv_archive_error">Impossible de charger les archives.</string>
+    <string name="lisy_tv_previous_categories">Catégories précédentes</string>
+    <string name="lisy_tv_next_categories">Catégories suivantes</string>
+    <string name="tv_search_no_matches">Aucune chaîne ni émission trouvée.</string>
+    <string name="tv_archive_back">Retour aux chaînes en replay</string>
+    <string name="tv_stream_unavailable">Flux indisponible</string>
+    <string name="tv_separate_source">Séparer ce flux de la chaîne</string>
+    <string name="tv_restore_source">Regrouper avec la chaîne</string>
+    <string name="tv_archive_all_day">Toute la journée</string>
 </resources>

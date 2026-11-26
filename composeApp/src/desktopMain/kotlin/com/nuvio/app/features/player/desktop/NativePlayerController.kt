@@ -102,6 +102,8 @@ internal class NativePlayerController(
     @Volatile
     private var pendingSource: PendingSource? = null
     @Volatile
+    private var appliedSource: PendingSource? = null
+    @Volatile
     private var releaseRequested: Boolean = false
     val isReleasing: Boolean
         get() = releaseRequested
@@ -324,6 +326,7 @@ internal class NativePlayerController(
                 }.onSuccess { created ->
                     val accepted = synchronized(lifecycleLock) {
                         if (!releaseRequested && terminalReleaseFailure == null && pendingSource === pending) {
+                            appliedSource = pending
                             handle = created
                             true
                         } else {
@@ -706,7 +709,8 @@ internal class NativePlayerController(
         NativePlayerBridge.setSpeed(current, next)
     }
 
-    fun snapshot(): PlayerPlaybackSnapshot {
+    fun snapshot(liveUrl: String? = null): PlayerPlaybackSnapshot {
+        if (liveUrl != null && (pendingSource?.sourceUrl != liveUrl || appliedSource !== pendingSource)) return PlayerPlaybackSnapshot()
         val current = handle
         if (current == 0L) return PlayerPlaybackSnapshot(isLoading = true)
         return runCatching {
@@ -723,6 +727,8 @@ internal class NativePlayerController(
                 playbackSpeed = NativePlayerBridge.speed(current),
                 videoWidth = videoSize.width,
                 videoHeight = videoSize.height,
+                liveVideoFrames = if (liveUrl != null && DesktopHostOs.current == DesktopHostOs.MACOS)
+                    NativePlayerBridge.liveVideoSignal(current) else null,
             )
         }.getOrDefault(PlayerPlaybackSnapshot(isLoading = true))
     }
@@ -1715,6 +1721,20 @@ private fun PlayerControlsState.toControlsJson(isFullscreen: Boolean, onImageRea
             append(",\"tagStyle\":").append(it.tagStyle.toJsonString())
             append(",\"borderColor\":").append(it.borderColor.toJsonString())
             append('}')
+        }
+        append(',')
+        appendJsonField("tvSourceContext", tvSourceContext)
+        append(',')
+        appendJsonField("liveTvRetry", liveTvRetryAvailable)
+        append(',')
+        appendJsonField("tvGuideLabel", tvGuideLabel)
+        append(',')
+        appendJsonField("tvGuideEmptyLabel", tvGuideEmptyLabel)
+        append(',')
+        appendJsonArrayField("tvGuideProgrammes", tvGuideProgrammes) { programme ->
+            append("{\"title\":").append(programme.title.toJsonString())
+            append(",\"start\":").append(programme.startSeconds)
+            append(",\"end\":").append(programme.endSeconds).append('}')
         }
         append(',')
         appendJsonArrayField("chapters", chapters) {

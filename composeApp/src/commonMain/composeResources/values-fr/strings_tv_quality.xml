@@ -1,0 +1,8 @@
+<resources>
+    <string name="tv_source_quality">Qualité du flux</string>
+    <string name="tv_source_auto">Auto</string>
+    <string name="tv_preview_mute">Couper le son de l’aperçu</string>
+    <string name="tv_preview_unmute">Activer le son de l’aperçu</string>
+    <string name="tv_live_all_streams_failed">Aucun des flux de %1$s ne permet la lecture.</string>
+    <string name="tv_live_selected_stream_failed">Le flux sélectionné pour %1$s ne permet pas la lecture.</string>
+</resources>

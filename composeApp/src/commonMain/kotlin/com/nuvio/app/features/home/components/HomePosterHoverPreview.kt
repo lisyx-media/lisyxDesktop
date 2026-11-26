@@ -609,7 +609,7 @@ private fun MetaPreview.previewMetadataLine(): String =
             ?.let { add("IMDb $it") }
     }.joinToString(" • ")
 
-private class HomePosterPreviewPositionProvider(
+internal class HomePosterPreviewPositionProvider(
     private val edgeMarginPx: Int,
     private val topOverlapPx: Int,
 ) : PopupPositionProvider {

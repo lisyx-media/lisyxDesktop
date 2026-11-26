@@ -1,0 +1,7 @@
+<resources>
+    <string name="tv_guide_previous_day">Previous day</string>
+    <string name="tv_guide_next_day">Next day</string>
+    <string name="tv_guide_refresh">Refresh guide</string>
+    <string name="tv_guide_updating">Updating guide…</string>
+    <string name="tv_guide_refresh_failed">The guide could not be refreshed. Previously loaded programmes remain visible.</string>
+</resources>

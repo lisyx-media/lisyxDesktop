@@ -65,7 +65,7 @@ internal object DesktopCache {
         writeAtomically(target) { pending -> Files.write(pending, bytes) }
     }
 
-    private fun writeAtomically(target: Path, write: (Path) -> Unit) {
+    internal fun writeAtomically(target: Path, write: (Path) -> Unit) {
         Files.createDirectories(target.parent)
         val pending = Files.createTempFile(target.parent, target.fileName.toString(), ".part")
         try {

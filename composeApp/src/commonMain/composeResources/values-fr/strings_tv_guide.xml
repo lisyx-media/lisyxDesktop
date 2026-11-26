@@ -1,0 +1,25 @@
+<resources>
+    <string name="tv_earlier">Programmes précédents</string>
+    <string name="tv_later">Programmes suivants</string>
+    <string name="tv_station_column">Chaîne</string>
+    <string name="tv_archive_dates">Choisir une date</string>
+    <string name="tv_archive_previous_day">Jour précédent</string>
+    <string name="tv_archive_next_day">Jour suivant</string>
+    <string name="tv_archive_evening">Soirée</string>
+    <string name="tv_archive_afternoon">Après-midi</string>
+    <string name="tv_archive_morning">Matin</string>
+    <string name="tv_archive_night">Nuit</string>
+    <string name="tv_archive_other_time">Émissions</string>
+    <string name="tv_archive_today">Aujourd’hui</string>
+    <string name="tv_archive_yesterday">Hier</string>
+    <string name="tv_archive_watch">Lire depuis le début</string>
+    <string name="tv_guide_aired">Déjà diffusé</string>
+    <string name="tv_guide_live">En direct</string>
+    <string name="tv_guide_watch_channel">Voir %1$s en direct</string>
+    <string name="tv_guide_play_replay">Lire le replay</string>
+    <string name="tv_guide_checking_replay">Vérification du replay…</string>
+    <string name="tv_guide_unavailable_replay">Replay indisponible</string>
+    <string name="tv_guide_unverified_replay">Replay non vérifié</string>
+    <string name="tv_guide_starting_replay">Ouverture du replay…</string>
+    <string name="tv_guide_replay_play_error">La lecture du replay a échoué. Vous pouvez réessayer.</string>
+</resources>

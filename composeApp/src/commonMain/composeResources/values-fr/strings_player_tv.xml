@@ -1,0 +1,7 @@
+<resources>
+    <string name="player_tv_programme_guide">Guide TV</string>
+    <string name="player_tv_stream_quality">Qualité du flux</string>
+    <string name="player_tv_auto_source">Automatique</string>
+    <string name="player_tv_source_connecting">Connexion au flux…</string>
+    <string name="player_tv_source_failed">Ce flux est indisponible. Essaie une autre qualité.</string>
+</resources>

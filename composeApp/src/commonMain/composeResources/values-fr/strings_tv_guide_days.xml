@@ -1,0 +1,7 @@
+<resources>
+    <string name="tv_guide_previous_day">Jour précédent</string>
+    <string name="tv_guide_next_day">Jour suivant</string>
+    <string name="tv_guide_refresh">Actualiser le guide</string>
+    <string name="tv_guide_updating">Actualisation du guide…</string>
+    <string name="tv_guide_refresh_failed">Le guide n’a pas pu être actualisé. Les programmes déjà chargés restent affichés.</string>
+</resources>

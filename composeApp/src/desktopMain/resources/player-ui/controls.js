@@ -12,6 +12,7 @@ const playbackError = document.getElementById("playbackError");
 const playbackErrorTitle = document.getElementById("playbackErrorTitle");
 const playbackErrorMessage = document.getElementById("playbackErrorMessage");
 const playbackErrorAction = document.getElementById("playbackErrorAction");
+const livePlaybackErrorBack = document.getElementById("livePlaybackErrorBack");
 const playbackErrorActionLabel = document.getElementById("playbackErrorActionLabel");
 const pauseMetadataOverlay = document.getElementById("pauseMetadataOverlay");
 const pauseWatchingLabel = document.getElementById("pauseWatchingLabel");
@@ -1014,6 +1015,7 @@ const modalByName = {
   sources: sourceModal,
   episodes: episodesModal,
   chapters: chaptersModal,
+  tvGuide: document.getElementById("tvGuideModal"),
   streamInfo: streamInfoModal,
   submitIntro: submitIntroModal,
   p2pConsent: p2pConsentModal,
@@ -1892,8 +1894,12 @@ const renderSourceVirtualRows = () => {
     wrapper.className = "source-virtual-row";
     wrapper.style.transform = `translateY(${sourceVirtualOffsets[index]}px)`;
     const row = buildSourceRow(item, selected => {
+      if (state.tvSourceContext && selected.isCurrent) {
+        closePlayerModal();
+        return;
+      }
       send("selectSource", Number(selected.index) || 0);
-      window.setTimeout(closePlayerModal, 120);
+      if (!state.tvSourceContext) window.setTimeout(closePlayerModal, 120);
     });
     wrapper.appendChild(row);
     fragment.appendChild(wrapper);
@@ -1926,7 +1932,8 @@ const renderSourceModal = (modalOpened = false) => {
   sourcePanelTitle.textContent = state.sourcesPanelTitle || "Sources";
   sourceReloadButton.textContent = state.reloadLabel || "Reload";
   sourceCloseButton.textContent = state.panelCloseLabel || "Close";
-  sourceContextLabel.textContent = state.episodeText || state.title || "";
+  sourceReloadButton.hidden = Boolean(state.tvSourceContext);
+  sourceContextLabel.textContent = state.tvSourceContext || state.episodeText || state.title || "";
   sourceContextLabel.hidden = !sourceContextLabel.textContent;
 
   const filters = normalizeItems(state.sourceFilters);
@@ -2297,6 +2304,32 @@ const renderStreamInfoModal = () => {
   });
 };
 
+const guideTime = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+let renderedGuideSignature = "";
+const renderTvGuide = () => {
+  document.getElementById("tvGuideTitle").textContent = state.tvGuideLabel;
+  document.getElementById("tvGuideCloseButton").textContent = state.panelCloseLabel || "Close";
+  const list = document.getElementById("tvGuideList");
+  const now = Date.now() / 1000;
+  const programmes = (state.tvGuideProgrammes || []).filter(programme => programme.end > now);
+  const signature = JSON.stringify([state.tvGuideEmptyLabel, programmes, programmes.findIndex(programme => programme.start <= now)]);
+  if (signature === renderedGuideSignature) return;
+  renderedGuideSignature = signature;
+  const rows = programmes.map(programme => {
+    const row = document.createElement("div");
+    row.className = "tv-guide-row";
+    if (programme.start <= now) row.setAttribute("aria-current", "time");
+    const time = document.createElement("span");
+    time.textContent = guideTime.format(programme.start * 1000) + " – " + guideTime.format(programme.end * 1000);
+    const title = document.createElement("strong");
+    title.textContent = programme.title;
+    row.append(time, title);
+    return row;
+  });
+  if (rows.length) list.replaceChildren(...rows);
+  else list.textContent = state.tvGuideEmptyLabel;
+};
+
 const renderChaptersModal = (modalOpened = false) => {
   const chapters = Array.isArray(state.chapters) ? state.chapters : [];
   const durationMs = Math.max(0, Number(state.durationMs) || 0);
@@ -2400,6 +2433,7 @@ const renderActiveModal = (modalOpened = false) => {
   if (activeModal === "speed") renderSpeedOptionList();
   if (activeModal === "sources") renderSourceModal(modalOpened);
   if (activeModal === "episodes") renderEpisodesModal(modalOpened);
+  if (activeModal === "tvGuide") renderTvGuide();
   if (activeModal === "chapters") renderChaptersModal(modalOpened);
   if (activeModal === "streamInfo") renderStreamInfoModal();
   if (activeModal === "submitIntro") renderSubmitIntroModal();
@@ -2487,6 +2521,9 @@ const renderPlaybackError = () => {
   playbackError.setAttribute("aria-label", titleText || "Playback error");
   playbackErrorTitle.textContent = titleText || "Playback error";
   playbackErrorMessage.textContent = messageText;
+  playbackErrorAction.dataset.command = state.liveTvRetry ? "retryLiveTv" : "back";
+  livePlaybackErrorBack.hidden = !state.liveTvRetry;
+  livePlaybackErrorBack.textContent = state.closeLabel || "Close player";
   playbackErrorActionLabel.textContent = actionText || "Go back";
   playbackErrorAction.setAttribute("aria-label", actionText || "Go back");
 
@@ -2785,6 +2822,9 @@ const renderChrome = () => {
   document.getElementById("trailerYoutubeLabel").textContent = state.externalPlayerLabel || "YouTube";
   const hasChapters = Array.isArray(state.chapters) && state.chapters.length > 0;
   setVisible(chaptersButton, hasChapters);
+  setVisible(document.getElementById("tvGuideButton"), Boolean(state.tvGuideLabel));
+  document.getElementById("tvGuideLabel").textContent = state.tvGuideLabel || "";
+  setActionButtonLabel("tvGuide", state.tvGuideLabel);
   chaptersLabel.textContent = state.chaptersLabel || "Chapters";
   setActionButtonLabel("chapters", state.chaptersLabel || "Chapters");
   streamInfoLabel.textContent = state.streamInfoLabel || "Stream info";
@@ -3205,13 +3245,18 @@ document.querySelectorAll("[data-command]").forEach(button => {
     if (command === "sources") {
       sourceFilterId = "";
       openPlayerModal("sources");
-      send("sources", 0);
+      if (!state.tvSourceContext) send("sources", 0);
       return;
     }
     if (command === "episodes") {
       episodeStreamFilterId = "";
       openPlayerModal("episodes");
       send("episodes", 0);
+      return;
+    }
+    if (command === "tvGuide") {
+      openPlayerModal("tvGuide");
+      document.getElementById("tvGuideCloseButton").focus();
       return;
     }
     if (command === "chapters") {
@@ -3381,6 +3426,11 @@ sourceList.addEventListener("scroll", () => {
     requestSourceVirtualRender();
   }
 }, { passive: true });
+document.getElementById("tvGuideCloseButton").addEventListener("click", event => {
+  event.stopPropagation();
+  closePlayerModal();
+  document.getElementById("tvGuideButton").focus();
+});
 chaptersCloseButton.addEventListener("click", event => {
   event.stopPropagation();
   closePlayerModal();

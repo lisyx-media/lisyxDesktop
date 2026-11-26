@@ -52,6 +52,7 @@ data class PlayerLaunch(
     val subtitleExtras: SubtitleRequestExtras? = null,
     val sourceFilename: String? = null,
     val stream: com.nuvio.app.features.streams.StreamItem? = null,
+    val liveTvAttemptedIds: Set<String> = emptySet(),
 )
 
 object PlayerLaunchStore {
@@ -301,6 +302,8 @@ data class PlayerPlaybackSnapshot(
     val playbackSpeed: Float = 1f,
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
+    // macOS live TV only: rendered video frames, or -1 when the stream has terminated.
+    val liveVideoFrames: Long? = null,
 )
 
 data class PlayerNowPlayingInfo(

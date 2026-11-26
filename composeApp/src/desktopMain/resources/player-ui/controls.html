@@ -198,6 +198,7 @@
           <button class="playback-error-action" id="playbackErrorAction" type="button" data-command="back">
             <span id="playbackErrorActionLabel">Go back</span>
           </button>
+          <button class="playback-error-back" id="livePlaybackErrorBack" type="button" data-command="back" hidden>Close player</button>
         </div>
       </section>
 
@@ -268,6 +269,7 @@
             <button class="action" data-command="audio"><svg><use href="#icon-audio"></use></svg><span id="audioLabel">Audio</span></button>
             <button class="action optional" id="sourcesButton" data-command="sources"><svg><use href="#icon-source"></use></svg><span id="sourcesLabel">Sources</span></button>
             <button class="action optional" id="episodesButton" data-command="episodes"><svg><use href="#icon-episodes"></use></svg><span id="episodesLabel">Episodes</span></button>
+            <button class="action optional" id="tvGuideButton" data-command="tvGuide" hidden><svg><use href="#icon-chapters"></use></svg><span id="tvGuideLabel"></span></button>
             <button class="action optional" id="chaptersButton" data-command="chapters" hidden><svg><use href="#icon-chapters"></use></svg><span id="chaptersLabel">Chapters</span></button>
             <button class="action optional" id="streamInfoButton" data-command="streamInfo"><svg><use href="#icon-info"></use></svg><span id="streamInfoLabel">Stream info</span></button>
             <button class="action optional" id="trailerYoutubeButton" data-command="external" hidden>
@@ -454,6 +456,15 @@
             <button class="panel-button" id="subtitleFontImport" type="button">Import font</button>
             <button class="panel-button primary" id="subtitleFontDone" type="button">Done</button>
           </div>
+        </div>
+      </section>
+      <section class="modal-layer player-side-modal" id="tvGuideModal" aria-labelledby="tvGuideTitle" hidden>
+        <div class="track-panel player-side-panel tv-guide-panel">
+          <div class="track-header-row">
+            <div class="track-title" id="tvGuideTitle"></div>
+            <button class="panel-button" id="tvGuideCloseButton" type="button"></button>
+          </div>
+          <div class="track-list tv-guide-list" id="tvGuideList"></div>
         </div>
       </section>
       <section class="modal-layer player-side-modal" id="chaptersModal" aria-label="Chapters" hidden>
