@@ -96,6 +96,10 @@ internal fun TvBrowser(
     onRefreshGuide: () -> Unit = {},
     playbackFailure: String? = null,
     retryPlayback: (() -> Unit)? = null,
+    replaySearch: TvGuideReplaySearch? = null,
+    adultChannelsLocked: Boolean = false,
+    requestAdultAccess: () -> Unit = {},
+    relockAdultChannels: (() -> Unit)? = null,
 ) {
     var page by rememberSaveable { mutableStateOf(TvPage.Live) }
     var previewMuted by rememberSaveable { mutableStateOf(false) }
@@ -104,6 +108,15 @@ internal fun TvBrowser(
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var countryMenu by remember { mutableStateOf(false) }
+    var adultCountryReset by rememberSaveable { mutableStateOf(false) }
+    fun openAdultChannels() {
+        adultCountryReset = country != null
+        country = null
+        favoritesOnly = false
+        query = ""
+        category = "Adulte"
+        if (adultChannelsLocked) requestAdultAccess()
+    }
     val all = channels.orEmpty()
     val countries = remember(all) { all.map { it.country ?: Missing }.distinct().sorted() }
     val filters = remember(all, page, favoritesOnly, favorites, country) {
@@ -120,11 +133,28 @@ internal fun TvBrowser(
             findTvBroadcasts(filters, guide, term, now, replayOnly = page == TvPage.Replay)
         }
     }
-    val broadcastMatches = results?.programmes.orEmpty()
-    val scoped = if (term.isEmpty()) filters else results?.stations.orEmpty()
-    val categories = remember(scoped, category) {
+    val archiveStations = remember(filters, favorites, category) {
+        filters.filter { c -> c.variants.any { it.replayAvailable } &&
+            (category == null || category in c.categories || category == Missing && c.categories.isEmpty()) }
+            .sortedByDescending { it.id in favorites }
+    }
+    val archiveSearch = rememberTvReplayResults(replaySearch, archiveStations, term,
+        prepare = page == TvPage.Guide || page == TvPage.Replay, now = now)
+    val broadcastMatches = remember(results, archiveSearch.matches, page, replaySearch, now / 60) {
+        val guideMatches = if (page == TvPage.Replay && replaySearch != null) emptyList() else results?.programmes.orEmpty()
+        (guideMatches + archiveSearch.matches).distinctBy { (channel, program) -> channel.id to program.start }
+            .sortedWith(tvBroadcastOrder(now))
+    }
+    val scoped = remember(term, filters, results, broadcastMatches, page, replaySearch) {
+        if (term.isEmpty()) filters else {
+            val stations = results?.stations.orEmpty().filter { page != TvPage.Replay || replaySearch == null ||
+                tvSearchTerm(it.name).contains(term) || it.variants.any { v -> tvSearchTerm(v.entry.title).contains(term) } }
+            (stations + broadcastMatches.map { it.first }).distinctBy { it.id }
+        }
+    }
+    val categories = remember(scoped, category, adultChannelsLocked) {
         // Keep an active filter available even if it currently has no matching channels.
-        (scoped.flatMap { it.categories.ifEmpty { setOf(Missing) } } + listOfNotNull(category))
+        (scoped.flatMap { it.categories.ifEmpty { setOf(Missing) } } + listOfNotNull(category) + (if (adultChannelsLocked) listOf("Adulte") else emptyList()))
             .distinct().sortedWith(compareBy<String> { categoryOrder[it] ?: categoryOrder.size }.thenBy { it })
     }
     val visible = remember(scoped, category, guide, page, now / 60) {
@@ -200,7 +230,7 @@ internal fun TvBrowser(
                                     null -> stringResource(Res.string.lisy_tv_all_countries)
                                     Missing -> stringResource(Res.string.lisy_tv_unknown_country)
                                     else -> value
-                                }) }, onClick = { country = value; countryMenu = false })
+                                }) }, onClick = { country = value; countryMenu = false; adultCountryReset = false })
                             }
                         }
                     }
@@ -212,6 +242,17 @@ internal fun TvBrowser(
                     ) {
                         Text(stringResource(Res.string.lisy_tv_favorites), style = MaterialTheme.typography.labelLarge)
                         Switch(checked = favoritesOnly, onCheckedChange = null)
+                    }
+                    if (adultChannelsLocked || all.any { it.requiresParentalPin }) {
+                        TextButton(
+                            onClick = ::openAdultChannels,
+                            shape = pill,
+                        ) {
+                            Icon(if (adultChannelsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                                null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(Res.string.tv_parental_channels))
+                        }
                     }
                 }
                 val categoryList = rememberLazyListState()
@@ -231,14 +272,21 @@ internal fun TvBrowser(
                             val label = when (value) {
                                 null -> stringResource(Res.string.lisy_tv_all_channels)
                                 Missing -> stringResource(Res.string.lisy_tv_no_category)
+                                "Adulte" -> stringResource(Res.string.tv_parental_channels)
                                 else -> value
                             }
                             val selected = category == value
                             Box(Modifier.clip(pill).background(if (selected) tvRed.copy(alpha = .22f) else Color.Transparent)
-                                .selectable(selected, role = Role.RadioButton) { category = value }
+                                .selectable(selected, role = Role.RadioButton) {
+                                    if (value == "Adulte") openAdultChannels() else category = value
+                                }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)) {
-                                Text(label, style = MaterialTheme.typography.labelLarge,
-                                    color = if (selected) Color(0xFFFFA8AF) else colors.onSurfaceVariant)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    if (value == "Adulte" && adultChannelsLocked)
+                                        Icon(Icons.Rounded.Lock, null, Modifier.size(14.dp), tint = colors.onSurfaceVariant)
+                                    Text(label, style = MaterialTheme.typography.labelLarge,
+                                        color = if (selected) Color(0xFFFFA8AF) else colors.onSurfaceVariant)
+                                }
                             }
                         }
                     }
@@ -248,8 +296,37 @@ internal fun TvBrowser(
                         }
                     }
                 }
+                if (category == "Adulte" && adultCountryReset) {
+                    Text(stringResource(Res.string.tv_adult_catalog_all_countries),
+                        Modifier.padding(horizontal = pad, vertical = 6.dp),
+                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                }
+                if (category == "Adulte" && adultChannelsLocked) {
+                    Column(Modifier.fillMaxWidth().padding(pad), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(Res.string.tv_parental_locked), color = colors.onSurfaceVariant)
+                        TextButton(onClick = requestAdultAccess) { Text(stringResource(Res.string.tv_parental_unlock)) }
+                    }
+                    return@Column
+                }
+                if (category == "Adulte" && relockAdultChannels != null) {
+                    TextButton(onClick = relockAdultChannels, modifier = Modifier.padding(start = pad)) {
+                        Icon(Icons.Rounded.Lock, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(Res.string.tv_parental_relock))
+                    }
+                }
                 val matchingProgrammes = remember(broadcastMatches, category) {
                     broadcastMatches.filter { (c, _) -> category == null || category in c.categories || category == Missing && c.categories.isEmpty() }
+                }
+                if (term.isNotEmpty() && (page == TvPage.Guide || page == TvPage.Replay)) {
+                    val message = when {
+                        archiveSearch.busy -> Res.string.tv_search_building_history
+                        archiveSearch.partial -> Res.string.tv_search_partial_history
+                        else -> null
+                    }
+                    if (message != null) Text(if (archiveSearch.busy) stringResource(message, archiveSearch.percent) else stringResource(message),
+                        Modifier.padding(start = pad, end = pad, bottom = 8.dp),
+                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
                 if (matchingProgrammes.isNotEmpty()) {
                     TvBroadcastResults(matchingProgrammes, now, playingId, pad, lookupReplay, onLive, onReplay)
@@ -269,6 +346,7 @@ internal fun TvBrowser(
                     term.isNotEmpty() && results == null -> Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                     }
+                    visible.isEmpty() && term.isNotEmpty() && archiveSearch.busy -> Unit
                     visible.isEmpty() -> Column(Modifier.fillMaxWidth().padding(pad), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(if (page == TvPage.Replay && all.none { c -> c.variants.any { it.replayAvailable } })
                             Res.string.lisy_tv_no_archive_channels else if (query.isNotBlank()) Res.string.tv_search_no_matches else Res.string.lisy_tv_empty))

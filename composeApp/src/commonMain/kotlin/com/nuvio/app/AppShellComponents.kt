@@ -177,7 +177,8 @@ internal data class AppTabActions(
     val onLibraryPosterLongClick: ((LibraryItem, LibrarySection) -> Unit)? = null,
     val onLibrarySectionViewAllClick: ((LibrarySection, LibrarySortOption) -> Unit)? = null,
     val onTvReplayPlay: (com.nuvio.app.features.lisy.LiveTvChannel, String, String, String) -> Unit = { _, _, _, _ -> },
-    val onTvPlay: (String, String, String, String?, Set<String>) -> Unit = { _, _, _, _, _ -> },
+    val onTvPlay: (com.nuvio.app.features.lisy.LiveTvChannel, String, Set<String>) -> Unit = { _, _, _ -> },
+    val onTvParentalSettings: () -> Unit = {},
     val onCloudFilePlay: ((CloudLibraryItem, CloudLibraryFile) -> Unit)? = null,
     val onConnectCloudClick: (() -> Unit)? = null,
     val onDownloadsClick: () -> Unit = {},
@@ -279,6 +280,7 @@ internal fun AppTabHost(
                 com.nuvio.app.features.lisy.LiveTvScreen(
                     topPadding = state.topChromePadding,
                     onPlay = actions.onTvPlay,
+                    onConfigureAdultPin = actions.onTvParentalSettings,
                     onReplayPlay = actions.onTvReplayPlay,
                 )
             }

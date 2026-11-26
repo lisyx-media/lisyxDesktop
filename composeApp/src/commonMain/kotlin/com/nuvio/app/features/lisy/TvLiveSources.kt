@@ -44,8 +44,13 @@ internal object TvLiveSources {
 
     suspend fun resolveFrom(
         portal: LisyPortal, channel: LiveTvChannel, variantId: String?, attempted: Set<String> = emptySet(),
-    ): ResolvedTvStream? = nextTvStream(channel, variantId, attempted) { entry ->
-        kotlinx.coroutines.withTimeoutOrNull(12_000L) { portal.stream(LisyCatalog.Live, entry) }
+    ): ResolvedTvStream? {
+        if (!portal.allowsPlayback(channel)) return null
+        return nextTvStream(channel, variantId, attempted) { entry ->
+            if (portal.allowsPlayback(channel)) {
+                kotlinx.coroutines.withTimeoutOrNull(12_000L) { portal.stream(LisyCatalog.Live, entry) }
+            } else null
+        }?.takeIf { portal.allowsPlayback(channel) }
     }
 }
 

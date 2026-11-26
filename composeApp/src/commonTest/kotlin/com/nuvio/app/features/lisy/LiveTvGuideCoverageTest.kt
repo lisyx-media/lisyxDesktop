@@ -10,6 +10,50 @@ import kotlin.test.assertFalse
 
 class LiveTvGuideCoverageTest {
     @Test
+    fun coveredViewportReadsNoPagesAndRefreshUsesVisibleDayBeforeYesterday() = runTest {
+        val date = "2030-01-03"
+        val midnight = checkNotNull(com.nuvio.app.features.watchprogress.CurrentDateProvider.localStartOfDayEpochMs(date)) / 1000
+        val start = midnight + 1800
+        val end = midnight + 7200
+        val requests = mutableListOf<Pair<String, String>>()
+        val engine = MockEngine { request ->
+            val query = request.url.parameters
+            respond(when (query["action"]) {
+                "handshake" -> """{"js":{"token":"test"}}"""
+                "get_profile" -> """{"js":{}}"""
+                "get_simple_data_table" -> {
+                    requests += checkNotNull(query["ch_id"]) to checkNotNull(query["date"])
+                    """{"js":[{"id":"schedule","name":"Schedule","start_timestamp":$midnight,"stop_timestamp":$end}]}"""
+                }
+                else -> error("Unexpected request")
+            })
+        }
+        HttpClient(engine).use { http ->
+            val portal = LisyPortal(LisyServer("Test", "https://portal.example/c/", "00:11:22:33:44:55"), http)
+            fun variant(id: String, archives: Boolean) =
+                LiveTvVariant(LisyEntry(id, id, null, emptyList()), null, null, "France", archives)
+            val station = LiveTvChannel("tf1", "TF1", null, emptySet(), "France",
+                listOf(variant("primary", true), variant("secondary", false)))
+            val cached = mapOf("primary" to listOf(LiveTvProgram("First", start, start + 1200)),
+                "secondary" to listOf(LiveTvProgram("Following", start + 1200, end)))
+            kotlin.test.assertTrue(LiveTvCache.guideWindow(portal, start, end, listOf(station), knownGuide = cached,
+                onLoading = { error("Covered rows must remain visible without a spinner") }) { _, _ -> error("Already indexed") })
+            assertEquals(emptyList(), requests)
+
+            // A different screen fetched this variant. Its valid table wins over a preferred,
+            // uncached variant, and an entirely covered overnight interval never requests yesterday.
+            portal.guideForDay(station.copy(variants = station.variants.takeLast(1)), date)
+            repeat(2) { attempt ->
+                var delivered = emptyList<LiveTvProgram>()
+                kotlin.test.assertTrue(LiveTvCache.guideWindow(portal, start, end, listOf(station), knownGuide = cached,
+                    refreshKnown = true, forceRefresh = attempt == 1) { _, entries -> delivered = entries })
+                assertEquals("Schedule", delivered.single().name)
+            }
+            assertEquals(listOf("secondary" to date, "primary" to date), requests)
+        }
+    }
+
+    @Test
     fun laterVariantFillsTheRequestedGapInsteadOfStoppingAtANonemptyDay() = runTest {
         val day = "2030-01-03"
         val midnight = checkNotNull(com.nuvio.app.features.watchprogress.CurrentDateProvider.localStartOfDayEpochMs(day)) / 1000

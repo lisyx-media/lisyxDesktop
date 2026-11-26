@@ -1,0 +1,6 @@
+<resources>
+    <string name="tv_parental_channels">Chaînes adultes</string>
+    <string name="tv_parental_locked">Les chaînes adultes sont verrouillées.</string>
+    <string name="tv_parental_unlock">Déverrouiller</string>
+    <string name="tv_parental_relock">Verrouiller</string>
+</resources>

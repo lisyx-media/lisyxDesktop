@@ -2,18 +2,27 @@ package com.nuvio.app.features.lisy
 
 import com.nuvio.app.core.time.EpisodeReleaseDatePlatform
 import com.nuvio.app.features.watchprogress.CurrentDateProvider
+import com.nuvio.app.core.network.API_RESPONSE_MAX_BYTES
 import com.nuvio.app.core.network.createApiHttpClient
 import com.nuvio.app.core.network.readBoundedResponseBody
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -36,16 +45,37 @@ internal data class LisyEntry(val id: String, val title: String, val command: St
 )
 internal data class LisyPage(val entries: List<LisyEntry>, val hasMore: Boolean)
 
+@Serializable
+private data class PortalEnvelope<T>(val js: T)
+
+@Serializable
+private data class PortalRows<T>(
+    val data: List<T>,
+    @kotlinx.serialization.SerialName("total_items") val totalItems: JsonPrimitive? = null,
+    @kotlinx.serialization.SerialName("max_page_items") val maxPageItems: JsonPrimitive? = null,
+)
+
+private val lineupJson = Json { ignoreUnknownKeys = true }
+
 internal class LisyPortal(private val server: LisyServer, private val http: HttpClient = client) {
     private var token: String? = null
     private var guideChannelIds = emptySet<String>()
     private val archiveMutex = Mutex()
     private val connectionMutex = Mutex()
+    private val replayWeekMutex = Mutex()
+    private var replayWeek: Pair<TimeMark, List<String>>? = null
     private val guideRequests = Semaphore(3)
     private val guidePending = mutableMapOf<Pair<String, String>, CompletableDeferred<GuideDay>>()
     private val archivePages = mutableMapOf<Pair<String, String>, Pair<TimeMark, GuideDay>>()
 
     private suspend fun request(type: String, action: String, parameters: Map<String, String> = emptyMap()): JsonElement {
+        val body = requestBody(type, action, parameters)
+        return Json.parseToJsonElement(body).jsonObject["js"]?.takeUnless { it is JsonNull }
+            ?: error("Invalid portal response")
+    }
+
+    private suspend fun requestBody(type: String, action: String, parameters: Map<String, String> = emptyMap(),
+        wholeLineup: Boolean = false): String {
         val address = URLBuilder(server.url).apply {
             val path = encodedPath.trimEnd('/')
             encodedPath = when {
@@ -58,6 +88,7 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
                 .forEach { (key, value) -> this.parameters.remove(key); this.parameters.append(key, value) }
         }.build()
         return http.prepareGet(address) {
+            if (wholeLineup) timeout { requestTimeoutMillis = 120_000 }
             header(HttpHeaders.UserAgent, "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 MAG200 stbapp ver: 2 rev: 250 Safari/533.3")
             header("X-User-Agent", "Model: MAG250; Link: WiFi")
             // Some portals calculate archive availability incorrectly with the French STB locale.
@@ -70,9 +101,8 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
                 token = null
                 error("Portal request failed")
             }
-            val body = readBoundedResponseBody(response.bodyAsChannel(), response.contentLength())
-            Json.parseToJsonElement(body).jsonObject["js"]?.takeUnless { it is JsonNull }
-                ?: error("Invalid portal response")
+            readBoundedResponseBody(response.bodyAsChannel(), response.contentLength(),
+                if (wholeLineup) 64 * 1024 * 1024 else API_RESPONSE_MAX_BYTES)
         }
     }
 
@@ -88,9 +118,18 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
         }
     }
 
+    internal fun allowsPlayback(channel: LiveTvChannel): Boolean = !channel.requiresParentalPin ||
+        TvParentalControls.isUnlocked(com.nuvio.app.features.profiles.ProfileRepository.activeProfileId, server)
+
     suspend fun list(catalog: LisyCatalog, page: Int, search: String, seriesId: String? = null): LisyPage {
         connect()
-        val data = if (catalog == LisyCatalog.Live) request("itv", "get_all_channels") else {
+        if (catalog == LisyCatalog.Live) {
+            val entries = liveChannels().filter(::allowsPlayback).flatMap { channel ->
+                channel.variants.map { it.entry }.filter { it.title.contains(search, ignoreCase = true) }
+            }
+            return LisyPage(entries, false)
+        }
+        val data = run {
             val parameters = if (seriesId != null) mapOf("movie_id" to seriesId) else
                 mapOf("sortby" to "added", "search" to search, "category" to "0", "genre" to "0")
             request(catalog.portalType, "get_ordered_list", parameters + ("p" to page.toString()))
@@ -109,50 +148,103 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
                 year = row.text("year"),
                 season = (row.text("season_number") ?: row.text("season"))?.toIntOrNull(),
             )
-        }.filter { catalog != LisyCatalog.Live || it.title.contains(search, ignoreCase = true) }
+        }
         val total = container?.text("total_items")?.toLongOrNull()
         val pageSize = container?.text("max_page_items")?.toLongOrNull()?.takeIf { it > 0 } ?: rows.size.toLong()
-        return LisyPage(entries, catalog != LisyCatalog.Live && rows.isNotEmpty() && total != null && page * pageSize < total)
+        return LisyPage(entries, rows.isNotEmpty() && total != null && page * pageSize < total)
     }
 
     suspend fun liveChannels(): List<LiveTvChannel> = withContext(Dispatchers.Default) {
         connect()
-        val channels = request("itv", "get_all_channels").catalogRows()
-        val genres = try {
-            request("itv", "get_genres").catalogRows().mapNotNull { genre ->
-                val id = genre.text("id") ?: return@mapNotNull null
-                val title = genre.text("title") ?: genre.text("name") ?: return@mapNotNull null
-                id to title
-            }.toMap()
-        } catch (failure: CancellationException) {
-            throw failure
-        } catch (_: Exception) {
-            emptyMap()
+        val genres = request("itv", "get_genres").catalogRows().mapNotNull { genre ->
+            genre.text("id")?.let { it to genre }
+        }.toMap()
+        val base = URLBuilder(server.url).apply { parameters.clear(); fragment = "" }.build()
+        fun rows(fallbackGenre: JsonObject? = null) = object : KSerializer<LiveTvVariant?> {
+            override val descriptor = JsonElement.serializer().descriptor
+            override fun serialize(encoder: Encoder, value: LiveTvVariant?): Unit = error("Read-only portal catalogue")
+            override fun deserialize(decoder: Decoder): LiveTvVariant? {
+                // Keep only playback metadata as each row is decoded, even for very large lineups.
+                val row = (decoder as JsonDecoder).decodeJsonElement() as? JsonObject ?: return null
+                val id = row.text("id") ?: return null
+                val title = row.text("name")?.takeIf { it.isNotBlank() } ?: id
+                val rowGenreId = row.text("tv_genre_id")?.takeUnless { it in setOf("", "0", "*") }
+                if (fallbackGenre != null && rowGenreId != null &&
+                    rowGenreId != fallbackGenre.text("id") && !row.isParentalLocked()) {
+                    // A portal ignoring its genre filter must not reclassify public stations as adult.
+                    return null
+                }
+                val genre = fallbackGenre ?: row.text("tv_genre_id")?.let(genres::get)
+                val category = genre?.text("title") ?: genre?.text("name")
+                    ?: row.text("genre_title")?.takeIf { it.isNotBlank() }
+                val parentalLock = row.isParentalLocked() || genre?.isParentalLocked() == true ||
+                    liveTvCategory(category) == "Adulte"
+                return LiveTvVariant(
+                    entry = LisyEntry(id, title, row.text("cmd"), emptyList()),
+                    logo = row.text("logo")?.takeIf { it.isNotBlank() }?.let { logo ->
+                        runCatching { base.resolveUrl(logo) }.getOrNull()
+                    },
+                    parentalLock = parentalLock,
+                    category = if (parentalLock) "Adulte" else liveTvCategory(category),
+                    rawCategory = category,
+                    language = liveTvLanguage(row.text("language") ?: row.text("lang"), title, category),
+                    guideStationId = row.text("xmltv_id")?.trim()?.takeUnless { it.isEmpty() || it == "0" },
+                    replayAvailable = listOf("enable_tv_archive", "has_archive", "tv_archive_duration", "tv_archive")
+                        .any { row.positiveField(it) },
+                    archiveHours = row.text("tv_archive_duration")?.toIntOrNull()?.takeIf { it > 0 },
+                    country = liveTvCountry(row.text("country_code") ?: row.text("country"), title, category),
+                )
+            }
         }
-        val base = Url(server.url)
-        val variants = channels.mapNotNull { row ->
-            val id = row.text("id") ?: return@mapNotNull null
-            val title = row.text("name")?.takeIf { it.isNotBlank() } ?: id
-            val category = row.text("tv_genre_id")?.let(genres::get)
-                ?: row.text("genre_title")?.takeIf { it.isNotBlank() }
-            LiveTvVariant(
-                entry = LisyEntry(id, title, row.text("cmd"), emptyList()),
-                logo = row.text("logo")?.takeIf { it.isNotBlank() }?.let { logo ->
-                    runCatching { URLBuilder(base).apply {
-                        parameters.clear()
-                        fragment = ""
-                    }.build().resolveUrl(logo) }.getOrNull()
-                },
-                category = liveTvCategory(category),
-                rawCategory = category,
-                language = liveTvLanguage(row.text("language") ?: row.text("lang"), title, category),
-                guideStationId = row.text("xmltv_id")?.trim()?.takeUnless { it.isEmpty() || it == "0" },
-                replayAvailable = listOf("enable_tv_archive", "has_archive", "tv_archive_duration", "tv_archive")
-                    .any { row.positiveField(it) },
-                country = liveTvCountry(row.text("country_code") ?: row.text("country"), title, category),
-            )
+        fun decode(body: String, serializer: KSerializer<LiveTvVariant?>): PortalRows<LiveTvVariant?> = try {
+            lineupJson.decodeFromString(PortalEnvelope.serializer(PortalRows.serializer(serializer)), body).js
+        } catch (_: SerializationException) {
+            // Some portals put the array directly in js, without pagination metadata.
+            PortalRows(lineupJson.decodeFromString(PortalEnvelope.serializer(ListSerializer(serializer)), body).js)
         }
-        groupLiveTvChannels(variants)
+        val body = requestBody("itv", "get_all_channels", wholeLineup = true)
+        val variants = decode(body, rows()).data.filterNotNull().associateByTo(linkedMapOf()) { it.entry.id }
+        // Some portals omit protected bouquets entirely from get_all_channels.
+        // Ask every explicitly protected bouquet for its complete paginated list.
+        val restrictedGenres = genres.filterValues { genre ->
+            genre.isParentalLocked() || liveTvCategory(genre.text("title") ?: genre.text("name")) == "Adulte"
+        }
+        for ((genreId, genre) in restrictedGenres) {
+            try {
+                connect()
+                val seenIds = mutableSetOf<String>()
+                var received = 0L
+                val serializer = rows(genre)
+                for (page in 1..500) {
+                    currentCoroutineContext().ensureActive()
+                    val response = decode(requestBody("itv", "get_ordered_list", mapOf(
+                        "genre" to genreId, "category" to genreId, "p" to page.toString(),
+                        "sortby" to "number", "search" to "",
+                    )), serializer)
+                    var added = false
+                    for (variant in response.data.filterNotNull()) {
+                        if (seenIds.add(variant.entry.id)) added = true
+                        val previous = variants[variant.entry.id]
+                        variants[variant.entry.id] = if (previous == null) variant else variant.copy(
+                            entry = variant.entry.copy(command = variant.entry.command ?: previous.entry.command),
+                            logo = variant.logo ?: previous.logo,
+                            country = variant.country ?: previous.country,
+                            guideStationId = variant.guideStationId ?: previous.guideStationId,
+                            replayAvailable = variant.replayAvailable || previous.replayAvailable,
+                            archiveHours = variant.archiveHours ?: previous.archiveHours,
+                        )
+                    }
+                    received += response.data.size
+                    val total = response.totalItems?.content?.toLongOrNull()
+                    if (!added || response.data.isEmpty() || total != null && received >= total) break
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Preserve the public lineup when a protected bouquet is temporarily unavailable.
+            }
+        }
+        groupLiveTvChannels(variants.values.toList())
     }
 
     suspend fun liveGuide(): Map<String, List<LiveTvProgram>> = withContext(Dispatchers.Default) {
@@ -191,7 +283,9 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
         forceRefresh: Boolean = false,
         windowStart: Long? = null,
         windowEnd: Long? = null,
-    ): List<LiveTvProgram> {
+        knownWindow: List<LiveTvProgram> = emptyList(),
+    ): List<LiveTvProgram> = withContext(Dispatchers.Default) {
+        if (!allowsPlayback(channel)) return@withContext emptyList()
         require(isoDay.matches(date))
         var failure: Exception? = null
         var hadResponse = false
@@ -202,20 +296,41 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
                 .thenByDescending { it.replayAvailable },
         )
         val midnight = CurrentDateProvider.localStartOfDayEpochMs(date)?.div(1000)
+        // A local day may last 23 or 25 hours. Midnight of the next local date is its true end.
+        val followingDate = midnight?.let { EpisodeReleaseDatePlatform.localIsoDateAtEpochMs((it + 36 * 3600) * 1000) }
+        val nextMidnight = followingDate?.let(CurrentDateProvider::localStartOfDayEpochMs)?.div(1000)
         val wantedStart = if (midnight != null && windowStart != null) maxOf(midnight, windowStart) else windowStart
-        val wantedEnd = if (midnight != null && windowEnd != null) minOf(midnight + 86_400, windowEnd) else windowEnd
+        val wantedEnd = if (nextMidnight != null && windowEnd != null && nextMidnight > (windowStart ?: 0L))
+            minOf(nextMidnight, windowEnd) else windowEnd
+        fun add(entries: List<LiveTvProgram>) {
+            for (entry in entries) {
+                val existing = programs[entry.start]
+                if (existing == null || entry.end > existing.end) programs[entry.start] = entry
+            }
+        }
+        fun enough() = if (wantedStart == null || wantedEnd == null) programs.isNotEmpty() else
+            coversGuideWindow(knownWindow + programs.values, wantedStart, wantedEnd)
+        if (enough()) return@withContext emptyList()
+        val cachedIds = mutableSetOf<String>()
+        if (!forceRefresh) {
+            val lifetime = if (date == CurrentDateProvider.todayIsoDate()) 3.minutes else 6.hours
+            archiveMutex.withLock {
+                for (variant in variants) {
+                    val cached = archivePages[variant.entry.id to date]?.takeIf { it.first.elapsedNow() < lifetime } ?: continue
+                    cachedIds += variant.entry.id
+                    add(cached.second.programmes)
+                    hadResponse = true
+                    if (enough()) return@withContext programs.values.sortedBy { it.start }
+                }
+            }
+        }
         for (variant in variants) {
+            if (variant.entry.id in cachedIds) continue
             try {
                 val entries = guideDay(variant.entry.id, date, forceRefresh).programmes
                 hadResponse = true
-                for (entry in entries) {
-                    val existing = programs[entry.start]
-                    if (existing == null || entry.end > existing.end) programs[entry.start] = entry
-                }
-                if (entries.isNotEmpty() && (wantedStart == null || wantedEnd == null ||
-                        wantedEnd <= wantedStart || coversGuideWindow(programs.values.toList(), wantedStart, wantedEnd))) {
-                    return programs.values.sortedBy { it.start }
-                }
+                add(entries)
+                if (enough()) return@withContext programs.values.sortedBy { it.start }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -223,27 +338,84 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
             }
         }
         if (!hadResponse) failure?.let { throw it }
-        return programs.values.sortedBy { it.start }
+        programs.values.sortedBy { it.start }
     }
 
-    suspend fun replayDays(): List<String> {
+    suspend fun replayDays(): List<String> = replayWeekMutex.withLock {
+        replayWeek?.takeIf { it.first.elapsedNow() < 3.minutes }?.let { return@withLock it.second }
         connect()
         val rows = request("epg", "get_week").catalogRows()
-        val today = rows.firstOrNull { it.positiveField("today") }?.text("f_mysql")
+        val today = rows.firstOrNull { it.positiveField("today") }?.text("f_mysql")?.takeIf(isoDay::matches)
             ?: CurrentDateProvider.todayIsoDate()
-        return rows.mapNotNull { row -> row.text("f_mysql")?.takeIf { it.isNotBlank() && it <= today } }
-            .distinct().sortedDescending()
+        rows.mapNotNull { row -> row.text("f_mysql")?.takeIf { isoDay.matches(it) && it <= today } }
+            .distinct().sortedDescending().also { replayWeek = TimeSource.Monotonic.markNow() to it }
+    }
+
+    /** Reports checked days newest first so that the first selection is deterministic. */
+    suspend fun discoverReplayDays(
+        channel: LiveTvChannel,
+        onChecked: (String, List<LiveTvReplayProgram>) -> Unit,
+    ) = coroutineScope {
+        if (!allowsPlayback(channel) || channel.variants.none { it.replayAvailable }) return@coroutineScope
+        var failure: Throwable? = null
+        val now = kotlin.time.Clock.System.now().epochSeconds
+        for (dates in replayDays().filter { channel.replayCanCoverDate(it, now) }.chunked(3)) {
+            val requests = dates.map { day ->
+                async {
+                    try {
+                        Result.success(replayPrograms(channel, day))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Result.failure(error)
+                    }
+                }
+            }
+            for ((index, request) in requests.withIndex()) {
+                request.await().fold(
+                    onSuccess = { onChecked(dates[index], it) },
+                    onFailure = { failure = it },
+                )
+            }
+        }
+        failure?.let { throw it }
+        Unit
     }
 
     suspend fun replayPrograms(channel: LiveTvChannel, date: String): List<LiveTvReplayProgram> {
+        if (!allowsPlayback(channel)) return emptyList()
+        require(isoDay.matches(date))
+        var failure: Exception? = null
         for (variant in channel.variants.filter { it.replayAvailable }) {
-            val programs = archiveForDate(variant.entry.id, date)
+            val programs = try {
+                archiveForDate(variant.entry.id, date)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                failure = error
+                continue
+            }
             if (programs.isNotEmpty()) return programs
         }
+        failure?.let { throw it }
         return emptyList()
     }
 
+    /** Only rows marked as archived by this station's provider are eligible for replay search. */
+    suspend fun searchableReplayDay(channel: LiveTvChannel, date: String): List<LiveTvProgram> {
+        require(isoDay.matches(date))
+        if (!allowsPlayback(channel)) return emptyList()
+        val confirmed = linkedMapOf<Long, LiveTvProgram>()
+        for (variant in channel.variants.filter { it.replayAvailable }) {
+            val day = guideDay(variant.entry.id, date)
+            val starts = day.archives.mapNotNullTo(mutableSetOf()) { it.startEpochSeconds }
+            day.programmes.filter { it.start in starts }.forEach { confirmed.getOrPut(it.start) { it } }
+        }
+        return confirmed.values.sortedBy { it.start }
+    }
+
     suspend fun guideReplay(channel: LiveTvChannel, guide: LiveTvProgram): LiveTvReplayProgram? {
+        if (!allowsPlayback(channel)) return null
         val date = guide.portalStartTime?.take(10)?.takeIf { isoDay.matches(it) }
             ?: EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(guide.start * 1000) ?: return null
         var failure: Exception? = null
@@ -367,6 +539,9 @@ internal class LisyPortal(private val server: LisyServer, private val http: Http
         require(Url(url).host.isNotBlank())
         return url
     }
+
+    private fun JsonObject.isParentalLocked() =
+        listOf("censored", "lock", "locked", "is_adult", "adult", "parental_lock").any { positiveField(it) }
 
     private fun JsonObject.positiveField(key: String): Boolean {
         val value = text(key) ?: return false

@@ -12,6 +12,8 @@ internal data class LiveTvVariant(
     val guideStationId: String? = null,
     val language: String? = null,
     val rawCategory: String? = null,
+    val parentalLock: Boolean = false,
+    val archiveHours: Int? = null,
 )
 
 @Serializable
@@ -23,6 +25,11 @@ internal data class LiveTvChannel(
     val country: String?,
     val variants: List<LiveTvVariant>,
 )
+
+internal const val RestrictedTvType = "lisy-tv-private"
+
+internal val LiveTvChannel.requiresParentalPin: Boolean
+    get() = "Adulte" in categories || variants.any { it.parentalLock }
 
 private val spaces = Regex("""\s+""")
 private val marketPrefix = Regex("""^\s*[|\[]?([A-Za-z]{2,6})\s*[\]:|_-]\s*[|:_-]*\s*""")
@@ -109,7 +116,7 @@ private data class Theme(val name: String, val matches: Regex)
 private fun theme(name: String, words: String) = Theme(name, Regex("""\b(?:$words)\b"""))
 
 private val themes = listOf(
-    theme("Adulte", "adult[es]*|xxx|erotique|charme"),
+    theme("Adulte", "xxx|porn(?:o|ography)?|erotique|charme|dorcel|hustler|brazzers|playboy|penthouse"),
     theme("Sport", "sports?|[0-9]+sports?|supersports?|football|foot|soccer|rugby|basketball|golf|tennis|hockey|baseball|boxing|formul[ae] 1|moto ?gp|liga|ligue ?1|league|uefa|dazn|bein|eurosports?|espn[1-9]?|nesn|setanta|tsn[1-5]?|rds[12]?|sportsnet|nba|wnba|nhl|nfl|mlb|milb|mls|ncaa|epl|nbcs|flo|l.equipe live"),
     theme("Jeunesse", "kids?|enfants?|jeunesse|junior|cartoons?|nickelodeon|nicktoons|gulli|tiji|canal j|toons?|teletoon|telemagino|baby tv|boomerang|disney channel"),
     theme("Musique", "musique|music|mtv|mezzo|mcm|concerts?|clips?|classica|trace (?:urban|naija|mziki|toca|tropical|latina|caribbean|carribean|ayiti|vanilla|gospel)|stingray|zouk tv|tvm3|lfm tv|rouge tv|bblack"),
@@ -126,8 +133,12 @@ private fun editorialKey(text: String): String = text.lowercase()
     .replace('é', 'e').replace('è', 'e').replace('ê', 'e').replace('à', 'a').replace('ô', 'o')
     .replace('ï', 'i').replace('î', 'i').replace('ç', 'c').replace('’', '\'').replace('_', ' ').replace(spaces, " ")
 
+private val adultLabel = Regex("""\b(?:adult[es]*|adults)\b|\b18\s*\+""")
+private val nonAdultLabel = Regex("""\b(?:adult swim|adult alternative|adult contemporary|pop adult)\b""")
+
 internal fun liveTvCategory(raw: String?): String? {
     val normalized = editorialKey(raw ?: return null)
+    if (adultLabel.containsMatchIn(normalized) && !nonAdultLabel.containsMatchIn(normalized)) return "Adulte"
     if ("discovery+ ppv" in normalized) return "Événements"
     if (themedMovieFeed.containsMatchIn(normalized)) return "Cinéma"
     return themes.firstOrNull { it.matches.containsMatchIn(normalized) }?.name
@@ -255,7 +266,7 @@ internal fun groupLiveTvChannels(variants: List<LiveTvVariant>): List<LiveTvChan
                 val categories = members.mapNotNull { it.variant.category }.toSet()
                 val nameTheme = liveTvCategory(name)
                 val topics = when {
-                    "Adulte" in categories -> setOf("Adulte")
+                    members.any { it.variant.parentalLock } || "Adulte" in categories || nameTheme == "Adulte" -> setOf("Adulte")
                     knownStation != null -> knownStation
                     nameTheme != null && nameTheme != "Généralistes" -> setOf(nameTheme)
                     categories.isNotEmpty() -> categories

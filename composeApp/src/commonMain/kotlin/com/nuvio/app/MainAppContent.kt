@@ -51,6 +51,9 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigationevent.DirectNavigationEventInput
+import com.nuvio.app.features.lisy.requiresParentalPin
+import com.nuvio.app.features.lisy.RestrictedTvType
+import com.nuvio.app.features.lisy.TvParentalControls
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import com.nuvio.app.core.ui.LocalPosterClickAnchor
 import com.nuvio.app.core.ui.LocalVerticalBarPadding
@@ -712,6 +715,12 @@ internal fun MainAppContent(
     var resumePromptItem by remember { mutableStateOf<ContinueWatchingItem?>(null) }
     var lastExternalPlayerLaunch by remember { mutableStateOf<PlayerLaunch?>(null) }
     val activePlaybackProfileId = profileState.activeProfile?.profileIndex ?: ProfileRepository.activeProfileId
+    val parentalServer by com.nuvio.app.features.lisy.LisyServerRepository.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(activePlaybackProfileId, parentalServer) {
+        TvParentalControls.ensureLoaded()
+        TvParentalControls.bind(activePlaybackProfileId, parentalServer)
+    }
+
     val launchExternalPlayer = rememberExternalPlayerLauncher { result ->
         if (result != null) {
             val fallbackSession = lastExternalPlayerLaunch?.externalPlaybackSession()
@@ -811,7 +820,11 @@ internal fun MainAppContent(
         }
 
         suspend fun openExternalPlayback(launch: PlayerLaunch): Boolean {
-            if (!externalPlayerSupported) return false
+            if (!externalPlayerSupported || launch.parentMetaType == RestrictedTvType) return false
+            if (launch.parentMetaId.startsWith("lisy-tv:")) {
+                val channel = com.nuvio.app.features.lisy.LiveTvCache.channelForPlayback(parentalServer, launch.parentMetaId)
+                if (channel == null || channel.requiresParentalPin || launch.profileId != activePlaybackProfileId) return false
+            }
 
             lastExternalPlayerLaunch = launch
 
@@ -907,19 +920,19 @@ internal fun MainAppContent(
             navController.navigate(PlayerRoute(launchId = launchId, title = playerLaunch.title))
         }
 
-        fun playTvChannel(id: String, title: String, url: String, logo: String?, programmeId: String? = null, tried: Set<String> = emptySet()) {
+        fun playTvChannel(channel: com.nuvio.app.features.lisy.LiveTvChannel, title: String, url: String, programmeId: String? = null, tried: Set<String> = emptySet()) {
             val launch = PlayerLaunch(
                 profileId = activePlaybackProfileId,
                 title = title,
                 sourceUrl = url,
-                logo = logo,
+                logo = channel.logo,
                 streamTitle = title,
                 providerName = "Lisy",
                 liveTvAttemptedIds = tried,
-                parentMetaId = "lisy-tv:$id",
-                parentMetaType = "tv",
+                parentMetaId = "lisy-tv:${channel.id}",
+                parentMetaType = if (channel.requiresParentalPin) RestrictedTvType else "tv",
                 contentType = "tv",
-                videoId = programmeId?.let { "lisy-replay:$id:$it" },
+                videoId = programmeId?.let { "lisy-replay:${channel.id}:$it" },
             )
             val launchId = PlayerLaunchStore.put(launch)
             navController.navigate(PlayerRoute(launchId = launchId, title = title))
@@ -1455,9 +1468,13 @@ internal fun MainAppContent(
                                     )
                                 },
                                 onLibrarySectionViewAllClick = onLibrarySectionViewAllClick,
-                                onTvPlay = { id, title, url, logo, tried -> playTvChannel(id, title, url, logo, tried = tried) },
+                                onTvPlay = { channel, url, tried -> playTvChannel(channel, channel.name, url, tried = tried) },
+                                onTvParentalSettings = {
+                                    requestedSettingsPageName = "Lisy"
+                                    activateTab(AppScreenTab.Settings)
+                                },
                                 onTvReplayPlay = { channel, programmeId, title, url ->
-                                    playTvChannel(channel.id, title, url, channel.logo, programmeId)
+                                    playTvChannel(channel, title, url, programmeId)
                                 },
                                 onCloudFilePlay = { item, file ->
                                     coroutineScope.launch {

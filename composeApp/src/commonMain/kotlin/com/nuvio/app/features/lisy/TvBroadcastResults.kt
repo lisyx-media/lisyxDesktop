@@ -42,11 +42,12 @@ internal fun findTvBroadcasts(
             hits.forEach { broadcasts += channel to it }
         }
     }
-    val chronological = compareBy<Pair<LiveTvChannel, LiveTvProgram>> {
-        when { now in it.second.start until it.second.end -> 0; it.second.start > now -> 1; else -> 2 }
-    }.thenBy { kotlin.math.abs(it.second.start - now) }
-    return TvSearchResults(matchingStations, broadcasts.sortedWith(chronological))
+    return TvSearchResults(matchingStations, broadcasts.sortedWith(tvBroadcastOrder(now)))
 }
+
+internal fun tvBroadcastOrder(now: Long) = compareBy<Pair<LiveTvChannel, LiveTvProgram>> {
+    when { now in it.second.start until it.second.end -> 0; it.second.start > now -> 1; else -> 2 }
+}.thenBy { kotlin.math.abs(it.second.start - now) }
 
 @Composable
 internal fun TvBroadcastResults(
@@ -70,7 +71,7 @@ internal fun TvBroadcastResults(
             }
         }
     }
-    selection?.let { (station, p) ->
+    selection?.takeIf { it in matches }?.let { (station, p) ->
         Dialog(onDismissRequest = { selection = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             GuideProgrammeDetail(station, p, now, playingId != null, lookupReplay,
                 onLive = { onLive(it); selection = null },

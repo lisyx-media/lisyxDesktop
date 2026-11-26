@@ -3,7 +3,11 @@ package com.nuvio.app.features.lisy
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpHeaders
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,6 +15,63 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LiveTvReplayTest {
+    @Test
+    fun replayCalendarConfirmsEachDayForThisStationAndRetriesUnverifiedDates() = runTest {
+        val queries = mutableListOf<Pair<String, String>>()
+        val queriesMutex = Mutex()
+        var weekRequests = 0
+        var firstScan = true
+        val engine = MockEngine { request ->
+            val query = request.url.parameters
+            when (query["action"]) {
+                "handshake" -> respond("""{"js":{"token":"fixture"}}""")
+                "get_profile" -> respond("""{"js":{}}""")
+                "get_week" -> {
+                    weekRequests++
+                    respond("""{"js":[{"f_mysql":"2026-06-03","today":1},{"f_mysql":"2026-06-02"},
+                        {"f_mysql":"2026-06-01"},{"f_mysql":"2026-06-04"},{"f_mysql":"010"}]}""")
+                }
+                "get_simple_data_table" -> {
+                    val day = query["date"].orEmpty()
+                    val variant = query["ch_id"].orEmpty()
+                    queriesMutex.withLock { queries += day to variant }
+                    val archive = day == "2026-06-03" && variant == "second" || day == "2026-06-01" && !firstScan
+                    when {
+                        day == "2026-06-01" && firstScan || day == "2026-06-03" && variant == "first" ->
+                            respond("Unavailable", HttpStatusCode.ServiceUnavailable)
+                        else -> respond("""{"js":[{"id":"item","name":"Émission","mark_archive":${if (archive) 1 else 0}}]}""")
+                    }
+                }
+                else -> error("Unexpected portal action")
+            }
+        }
+        HttpClient(engine).use { client ->
+            val portal = LisyPortal(LisyServer("Fixture", "https://portal.example/c", "00:11:22:33:44:55"), client)
+            val variants = listOf("first", "second").map {
+                LiveTvVariant(LisyEntry(it, "TF1", null, emptyList()), null, null, "France", true)
+            }
+            val channel = LiveTvChannel("tf1", "TF1", null, emptySet(), "France", variants)
+            val confirmed = mutableListOf<String>()
+            val checkedEmpty = mutableListOf<String>()
+            val accept: (String, List<LiveTvReplayProgram>) -> Unit = { day, programmes ->
+                if (programmes.isEmpty()) checkedEmpty += day else confirmed += day
+            }
+            assertFailsWith<IllegalStateException> { portal.discoverReplayDays(channel, accept) }
+            assertEquals(listOf("2026-06-03"), confirmed)
+            assertEquals(listOf("2026-06-02"), checkedEmpty)
+            firstScan = false
+            confirmed.clear()
+            checkedEmpty.clear()
+            portal.discoverReplayDays(channel, accept)
+            assertEquals(listOf("2026-06-03", "2026-06-01"), confirmed)
+            assertEquals(listOf("2026-06-02"), checkedEmpty)
+            assertEquals(1, weekRequests)
+            assertEquals(2, queries.count { it.first == "2026-06-02" })
+            assertEquals(1, queries.count { it == ("2026-06-03" to "second") })
+            assertTrue(queries.none { it.first == "2026-06-04" })
+        }
+    }
+
     @Test
     fun protocolLocaleKeepsAnExactCanteloupArchiveAvailable() = runTest {
         val pages = mutableListOf<Int>()

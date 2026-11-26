@@ -4,7 +4,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nuvio.app.features.lisy.LisyServerRepository
+import com.nuvio.app.features.lisy.requiresParentalPin
+import com.nuvio.app.features.lisy.RestrictedTvType
+import com.nuvio.app.features.lisy.TvParentalControls
+import com.nuvio.app.features.profiles.ProfileRepository
 import androidx.compose.ui.Modifier
 import com.nuvio.app.core.ui.NuvioToastController
 import com.nuvio.app.features.party.PartyMedia
@@ -16,6 +25,8 @@ import com.nuvio.app.features.player.PlayerScreen
 import com.nuvio.app.features.watchprogress.ResumePromptRepository
 import com.nuvio.app.navigation.NuvioNavigator
 import com.nuvio.app.navigation.PlayerRoute
+
+private enum class TvPlaybackAccess { Loading, Public, Private, Unavailable }
 
 @Composable
 internal fun PlayerDestination(
@@ -43,6 +54,32 @@ internal fun PlayerDestination(
         Box(modifier = Modifier.fillMaxSize())
         return
     }
+    var restricted = launch.parentMetaType == RestrictedTvType
+    if (launch.parentMetaId.startsWith("lisy-tv:") || restricted) {
+        val server by LisyServerRepository.uiState.collectAsStateWithLifecycle()
+        val launchServer = remember(route.launchId) { server }
+        val profiles by ProfileRepository.state.collectAsStateWithLifecycle()
+        val profile = profiles.activeProfile?.profileIndex ?: ProfileRepository.activeProfileId
+        val parental by TvParentalControls.state.collectAsStateWithLifecycle()
+        val access = key(route.launchId, server, profile) {
+            produceState<TvPlaybackAccess>(TvPlaybackAccess.Loading) {
+                val channel = com.nuvio.app.features.lisy.LiveTvCache.channelForPlayback(server, launch.parentMetaId)
+                value = when {
+                    channel == null -> TvPlaybackAccess.Unavailable
+                    channel.requiresParentalPin || launch.parentMetaType == RestrictedTvType -> TvPlaybackAccess.Private
+                    else -> TvPlaybackAccess.Public
+                }
+            }.value
+        }
+        restricted = restricted || access == TvPlaybackAccess.Private
+        val denied = profile != launch.profileId || launchServer != server || access == TvPlaybackAccess.Unavailable ||
+            (restricted && (!parental.unlocked || !TvParentalControls.isUnlocked(profile, server)))
+        if (denied || access == TvPlaybackAccess.Loading) {
+            if (denied) LaunchedEffect(route.launchId) { popBack() }
+            Box(Modifier.fillMaxSize())
+            return
+        }
+    }
     val currentFullscreen = com.nuvio.app.core.ui.isFullscreenActionActive()
     val initialFullscreen = remember { currentFullscreen }
     val onBackBase = rememberGuardedPlayerPopBackStack(
@@ -62,7 +99,7 @@ internal fun PlayerDestination(
         { handler: (() -> Unit)? -> onSystemBackHandlerChanged(route, handler) }
     }
     LaunchedEffect(launch.videoId) {
-        launch.videoId?.let { ResumePromptRepository.markPlayerEntered(it) }
+        if (!restricted) launch.videoId?.let { ResumePromptRepository.markPlayerEntered(it) }
     }
     PlayerScreen(
         profileId = launch.profileId,
@@ -89,7 +126,7 @@ internal fun PlayerDestination(
         contentType = launch.contentType,
         videoId = launch.videoId,
         parentMetaId = launch.parentMetaId,
-        parentMetaType = launch.parentMetaType,
+        parentMetaType = if (restricted) RestrictedTvType else launch.parentMetaType,
         torrentInfoHash = launch.torrentInfoHash,
         torrentFileIdx = launch.torrentFileIdx,
         torrentFilename = launch.torrentFilename,
@@ -103,7 +140,7 @@ internal fun PlayerDestination(
         stream = launch.stream,
         onBack = onBack,
         onSystemBackHandlerChanged = registerSystemBack,
-        onOpenInExternalPlayer = if (externalPlayerSupported) { { request ->
+        onOpenInExternalPlayer = if (externalPlayerSupported && !restricted) { { request ->
             val playerLaunch = PlayerLaunch(
                 profileId = launch.profileId,
                 title = launch.title,
@@ -152,9 +189,9 @@ internal fun PlayerDestination(
             }
         } } else null,
         onOpenExternalUrl = { url ->
-            openExternalStreamUrl(url)
+            !restricted && openExternalStreamUrl(url)
         },
-        onOpenPartyMedia = onOpenPartyMedia,
+        onOpenPartyMedia = { if (!restricted) onOpenPartyMedia(it) },
         modifier = Modifier.fillMaxSize(),
     )
 }

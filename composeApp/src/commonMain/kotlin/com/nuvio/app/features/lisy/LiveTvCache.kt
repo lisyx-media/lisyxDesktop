@@ -7,6 +7,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import com.nuvio.app.core.time.EpisodeReleaseDatePlatform
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
@@ -17,11 +19,24 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal object LiveTvCache {
+    val guideIndex = LiveTvGuideIndex(platformGuideStorage())
     private val lineups = LiveTvLineups(platformLineupStorage())
     private val guides = Cache<Map<String, List<LiveTvProgram>>>(15.minutes)
 
     suspend fun channels(server: LisyServer, portal: LisyPortal) =
         TvSourceSeparations.apply(server, lineups.get(server, ProfileRepository.activeProfileId, portal::liveChannels))
+
+    suspend fun channelForPlayback(server: LisyServer?, parentId: String): LiveTvChannel? {
+        if (server == null) return null
+        val station = parentId.removePrefix("lisy-tv:")
+        return try {
+            channels(server, LisyPortal(server)).firstOrNull { it.id == station || it.variants.any { v -> v.entry.id == station } }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     suspend fun guide(server: LisyServer, portal: LisyPortal) =
         guides.get(server, portal::liveGuide)
@@ -32,32 +47,47 @@ internal object LiveTvCache {
         end: Long,
         channels: List<LiveTvChannel>,
         forceRefresh: Boolean = false,
-        onChannel: (LiveTvChannel, List<LiveTvProgram>) -> Unit,
+        knownGuide: Map<String, List<LiveTvProgram>> = emptyMap(),
+        refreshKnown: Boolean = false,
+        onLoading: () -> Unit = {},
+        onChannel: suspend (LiveTvChannel, List<LiveTvProgram>) -> Unit,
     ): Boolean = coroutineScope {
-        val startDay = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(start * 1000)
-        val midnight = startDay?.let(com.nuvio.app.features.watchprogress.CurrentDateProvider::localStartOfDayEpochMs)?.div(1000)
+        if (end <= start) return@coroutineScope true
+        val firstDay = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(start * 1000)
+        val lastDay = EpisodeReleaseDatePlatform.localIsoDateAtEpochMs((end - 1) * 1000)
+        val midnight = firstDay?.let(com.nuvio.app.features.watchprogress.CurrentDateProvider::localStartOfDayEpochMs)?.div(1000)
+        // A programme that spans midnight can belong to yesterday's table. Check it only
+        // after today's schedule and only if the requested early-morning interval still has a gap.
         val previousDay = midnight?.takeIf { start - it < 4 * 3600 }
             ?.let { EpisodeReleaseDatePlatform.localIsoDateAtEpochMs(it * 1000 - 1) }
-        val days = listOfNotNull(
-            previousDay,
-            startDay,
-            EpisodeReleaseDatePlatform.localIsoDateAtEpochMs((end - 1).coerceAtLeast(start) * 1000),
-        ).distinct()
-        val results = channels.distinctBy { it.id }.take(24).map { channel ->
+        val days = listOfNotNull(firstDay, lastDay, previousDay).distinct()
+        val stations = Semaphore(3)
+        channels.distinctBy { it.id }.take(24).map { channel ->
             async {
-                try {
-                    val programs = days.flatMap { day -> portal.guideForDay(channel, day, forceRefresh, windowStart = start, windowEnd = end) }
-                        .distinctBy { it.start }.sortedBy { it.start }
-                    onChannel(channel, programs)
-                    true
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    false
+                stations.withPermit {
+                    val indexed = if (forceRefresh || refreshKnown) emptyList() else channel.variants.flatMap { variant ->
+                        knownGuide[variant.entry.id].orEmpty().filter { it.start < end && it.end > start }
+                    }
+                    if (coversGuideWindow(indexed, start, end)) return@withPermit true
+                    onLoading()
+                    val received = mutableListOf<LiveTvProgram>()
+                    var failure = false
+                    for (day in days) {
+                        try {
+                            received += portal.guideForDay(channel, day, forceRefresh, windowStart = start,
+                                windowEnd = end, knownWindow = indexed + received)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            failure = true
+                        }
+                        if (coversGuideWindow(indexed + received, start, end)) break
+                    }
+                    if (received.isNotEmpty()) onChannel(channel, received.distinctBy { it.start }.sortedBy { it.start })
+                    !failure || coversGuideWindow(indexed + received, start, end)
                 }
             }
-        }.awaitAll()
-        results.all { it }
+        }.awaitAll().all { it }
     }
 
     private class Cache<T>(private val lifetime: Duration) {
@@ -74,6 +104,7 @@ internal object LiveTvCache {
     }
 }
 
+@Serializable
 internal data class LiveTvProgram(
     val name: String,
     val start: Long,
@@ -84,7 +115,7 @@ internal data class LiveTvProgram(
     val portalStartTime: String? = null,
 )
 
-private const val LINEUP_CLASSIFICATION_VERSION = 4
+private const val LINEUP_CLASSIFICATION_VERSION = 6
 
 @Serializable
 internal data class LiveTvLineupSnapshot(
@@ -120,15 +151,9 @@ internal class LiveTvLineups(
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
-                    when {
-                        previous == null -> throw failure
-                        previous.classificationVersion == LINEUP_CLASSIFICATION_VERSION -> previous
-                        else -> previous.copy(
-                            savedAt = 0,
-                            channels = groupLiveTvChannels(previous.channels.flatMap { it.variants }),
-                            classificationVersion = LINEUP_CLASSIFICATION_VERSION,
-                        )
-                    }
+                    // Older lineups discarded provider lock metadata. Refresh them before use.
+                    if (previous?.classificationVersion != LINEUP_CLASSIFICATION_VERSION) throw failure
+                    previous
                 }
             }
             if (entries.size >= 4 && key !in entries) entries.remove(entries.keys.first())
@@ -138,6 +163,7 @@ internal class LiveTvLineups(
 }
 
 
+@Serializable
 internal data class LiveTvGuideFocus(
     val start: Long,
     val end: Long,

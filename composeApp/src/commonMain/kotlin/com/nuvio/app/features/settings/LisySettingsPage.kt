@@ -27,21 +27,7 @@ internal fun LisySettingsContent(isTablet: Boolean) {
     var saved by remember { mutableStateOf(false) }
     var storageError by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = tokens.colors.textPrimary,
-        unfocusedTextColor = tokens.colors.textPrimary,
-        errorTextColor = tokens.colors.textPrimary,
-        focusedLabelColor = tokens.colors.accent,
-        unfocusedLabelColor = tokens.colors.textSecondary,
-        focusedPlaceholderColor = tokens.colors.textSecondary,
-        unfocusedPlaceholderColor = tokens.colors.textSecondary,
-        cursorColor = tokens.colors.accent,
-        focusedBorderColor = tokens.colors.accent.copy(alpha = .75f),
-        unfocusedBorderColor = tokens.colors.borderSubtle,
-        focusedContainerColor = tokens.colors.surface,
-        unfocusedContainerColor = tokens.colors.surface,
-        errorContainerColor = tokens.colors.surface,
-    )
+    val fieldColors = lisySettingsFieldColors()
     SettingsGroup(isTablet = isTablet) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(if (isTablet) 20.dp else 16.dp),
@@ -121,6 +107,7 @@ internal fun LisySettingsContent(isTablet: Boolean) {
             }
         }
     }
+    TvParentalSettings(isTablet)
     if (confirmDelete) {
         DialogSurface(
             onDismissRequest = { confirmDelete = false },
@@ -146,4 +133,24 @@ internal fun LisySettingsContent(isTablet: Boolean) {
             }
         }
     }
+}
+
+@Composable
+internal fun lisySettingsFieldColors(): TextFieldColors {
+    val tokens = MaterialTheme.nuvio
+    return OutlinedTextFieldDefaults.colors(
+        focusedTextColor = tokens.colors.textPrimary,
+        unfocusedTextColor = tokens.colors.textPrimary,
+        errorTextColor = tokens.colors.textPrimary,
+        focusedLabelColor = tokens.colors.accent,
+        unfocusedLabelColor = tokens.colors.textSecondary,
+        focusedPlaceholderColor = tokens.colors.textSecondary,
+        unfocusedPlaceholderColor = tokens.colors.textSecondary,
+        cursorColor = tokens.colors.accent,
+        focusedBorderColor = tokens.colors.accent.copy(alpha = .75f),
+        unfocusedBorderColor = tokens.colors.borderSubtle,
+        focusedContainerColor = tokens.colors.surface,
+        unfocusedContainerColor = tokens.colors.surface,
+        errorContainerColor = tokens.colors.surface,
+    )
 }

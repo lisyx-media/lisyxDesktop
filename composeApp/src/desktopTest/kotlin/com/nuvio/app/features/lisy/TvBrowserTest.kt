@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.nuvio.app.core.ui.NuvioTheme
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import nuvio.composeapp.generated.resources.*
@@ -221,6 +224,53 @@ class TvBrowserTest {
         ui.onNodeWithText(past.name).performClick()
         ui.onAllNodes(isRoot()).onFirst().performMouseInput { click(Offset(2f, 2f)) }
         ui.onNodeWithText(label(Res.string.tv_guide_unavailable_replay)).assertDoesNotExist()
+    }
+
+    @Test
+    fun replayOnlyShowsConfirmedDaysAndKeepsTheSelectedDayWhileLoading() {
+        val station = channel("TF1", "Généralistes", true)
+        val checkingOldest = CompletableDeferred<Unit>()
+        val engine = MockEngine { request ->
+            val parameters = request.url.parameters
+            respond(when (parameters["action"]) {
+                "handshake" -> """{"js":{"token":"fixture"}}"""
+                "get_profile" -> """{"js":{}}"""
+                "get_week" -> """{"js":[{"f_mysql":"2026-06-04","today":1},{"f_mysql":"2026-06-03"},
+                    {"f_mysql":"2026-06-02"},{"f_mysql":"2026-06-01"}]}"""
+                "get_simple_data_table" -> {
+                    val day = parameters["date"].orEmpty()
+                    if (day == "2026-06-01") checkingOldest.await()
+                    val archived = if (day == "2026-06-03") 0 else 1
+                    """{"js":[{"id":"archive-$day","name":"Journal du $day","t_time":"20:00","mark_archive":$archived}]}"""
+                }
+                "create_link" -> """{"js":{"cmd":"ffmpeg https://media.example/replay.ts"}}"""
+                else -> error("Unexpected action")
+            })
+        }
+        HttpClient(engine).use { client ->
+            val portal = LisyPortal(LisyServer("Fixture", "https://portal.example/c", "00:11:22:33:44:55"), client)
+            val played = CompletableDeferred<String>()
+            ui.setContent { NuvioTheme {
+                TvArchivePage(station, portal, onDismiss = {}) { programme, _ -> played.complete(programme.id) }
+            } }
+            try {
+                val earlier = runBlocking { getString(Res.string.tv_archive_previous_day) }
+                ui.waitUntil(6_000) { ui.onAllNodesWithContentDescription(earlier).fetchSemanticsNodes().isNotEmpty() }
+                ui.onNodeWithText("Journal du 2026-06-04").assertIsDisplayed()
+                ui.onNodeWithContentDescription(earlier).performClick()
+                ui.onNodeWithText("Journal du 2026-06-02").assertIsDisplayed()
+                ui.onNodeWithContentDescription(earlier).assertIsNotEnabled()
+                checkingOldest.complete(Unit)
+                ui.waitUntil(6_000) {
+                    ui.onAllNodes(hasContentDescription(earlier) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+                }
+                ui.onNodeWithText("Journal du 2026-06-02").performClick()
+                ui.waitUntil(6_000) { played.isCompleted }
+                assertEquals("archive-2026-06-02", runBlocking { played.await() })
+            } finally {
+                checkingOldest.complete(Unit)
+            }
+        }
     }
 
     @Test

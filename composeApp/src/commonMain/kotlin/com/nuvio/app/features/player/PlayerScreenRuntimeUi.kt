@@ -303,7 +303,7 @@ internal fun PlayerScreenRuntime.RenderPlayerRuntimeUi(
             title = chapter.title ?: stringResource(Res.string.compose_player_chapter_number, index + 1),
         )
     }
-    val tvChannelId = parentMetaId.takeIf { isDesktop && parentMetaType == "tv" && it.startsWith("lisy-tv:") }
+    val tvChannelId = parentMetaId.takeIf { isDesktop && (parentMetaType == "tv" || parentMetaType == com.nuvio.app.features.lisy.RestrictedTvType) && it.startsWith("lisy-tv:") }
         ?.removePrefix("lisy-tv:")
     val tvSchedule = if (tvChannelId != null) rememberPlayerTvSchedule(tvChannelId) else emptyList()
     val liveTv = tvChannelId != null && args.videoId == null

@@ -1,0 +1,4 @@
+<resources>
+    <string name="tv_search_building_history">Indexing replays · %1$d%</string>
+    <string name="tv_search_partial_history">Some of the provider’s replay history is temporarily unavailable.</string>
+</resources>

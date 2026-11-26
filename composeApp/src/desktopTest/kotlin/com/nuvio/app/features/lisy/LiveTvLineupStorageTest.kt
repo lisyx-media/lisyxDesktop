@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 
 class LiveTvLineupStorageTest {
     @Test
-    fun reclassifiesOlderCachesImmediatelyAndStillDisplaysThemWhenOffline() = runTest {
+    fun legacyLineupNeedsOneSuccessfulRefreshToKnowParentalLocks() = runTest {
         val directory = Files.createTempDirectory("lisyx-old-lineup")
         try {
             val storage = DesktopLineupStorage { directory }
@@ -20,9 +20,7 @@ class LiveTvLineupStorageTest {
             storage.write(server, 1, LiveTvLineupSnapshot(100_000L, legacy))
             var refreshes = 0
             val cache = LiveTvLineups(storage) { 100_001L }
-            val offline = cache.get(server, 1) { refreshes++; error("Offline") }
-            assertEquals(2, offline.single().variants.size)
-            assertEquals(setOf("Actualités"), offline.single().categories)
+            kotlin.test.assertFailsWith<IllegalStateException> { cache.get(server, 1) { refreshes++; error("Offline") } }
             cache.get(server, 1) { refreshes++; groupLiveTvChannels(variants) }
             LiveTvLineups(storage) { 100_002L }.get(server, 1) { error("Unexpected refresh") }
             assertEquals(2, refreshes)

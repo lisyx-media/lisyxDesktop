@@ -44,35 +44,40 @@ internal fun TvArchivePage(
     onDismiss: () -> Unit,
     onPlay: (LiveTvReplayProgram, String) -> Unit,
 ) {
-    var days by remember(channel) { mutableStateOf<List<String>?>(null) }
-    var date by remember(channel) { mutableStateOf<String?>(null) }
-    var programs by remember(channel, date) { mutableStateOf<List<LiveTvReplayProgram>?>(null) }
-    var loadFailed by remember(channel, date) { mutableStateOf(false) }
-    var playFailed by remember(channel, date) { mutableStateOf(false) }
-    var playing by remember(channel) { mutableStateOf<String?>(null) }
-    var attempt by remember { mutableIntStateOf(0) }
+    val archived = remember(portal, channel.id) { mutableStateMapOf<String, List<LiveTvReplayProgram>>() }
+    var date by remember(portal, channel.id) { mutableStateOf<String?>(null) }
+    var loading by remember(portal, channel.id) { mutableStateOf(true) }
+    var loadFailed by remember(portal, channel.id) { mutableStateOf(false) }
+    var playFailed by remember(portal, channel.id, date) { mutableStateOf(false) }
+    var playing by remember(portal, channel.id) { mutableStateOf<String?>(null) }
+    var attempt by remember(portal, channel.id) { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     if (LocalNavigationEventDispatcherOwner.current != null) {
         PlatformBackHandler(enabled = LocalScreenActive.current, onBack = onDismiss)
     }
-    LaunchedEffect(channel, date, attempt) {
+    LaunchedEffect(portal, channel, attempt) {
+        loading = true
         loadFailed = false
         try {
-            if (days == null) {
-                val result = portal.replayDays()
-                days = result
-                date = result.firstOrNull()
-            } else {
-                date?.let { programs = portal.replayPrograms(channel, it) }
+            val checked = mutableSetOf<String>()
+            portal.discoverReplayDays(channel) { day, programmes ->
+                checked.add(day)
+                if (programmes.isEmpty()) archived.remove(day) else archived[day] = programmes
+                if (date !in archived) date = archived.keys.maxOrNull()
             }
+            archived.keys.toList().filterNot(checked::contains).forEach(archived::remove)
+            if (date !in archived) date = archived.keys.maxOrNull()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             loadFailed = true
+        } finally {
+            loading = false
         }
     }
-    TvArchiveContent(channel, days, date, programs, playing, loadFailed, playFailed,
-            onDate = { date = it }, onDismiss = onDismiss, onRetry = { attempt++ },
+    val days = archived.keys.sortedDescending().takeUnless { loading && it.isEmpty() }
+    TvArchiveContent(channel, days, date, date?.let(archived::get), playing, loadFailed, playFailed,
+            scanning = loading, onDate = { date = it }, onDismiss = onDismiss, onRetry = { attempt++ },
             onProgram = { program ->
                 if (playing == null) {
                     playing = program.id
@@ -109,6 +114,7 @@ internal fun TvArchiveContent(
     channel: LiveTvChannel, days: List<String>?, date: String?, programs: List<LiveTvReplayProgram>?,
     playing: String?, loadFailed: Boolean, playFailed: Boolean,
     onDate: (String) -> Unit, onDismiss: () -> Unit, onRetry: () -> Unit, onProgram: (LiveTvReplayProgram) -> Unit,
+    scanning: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val available = days.orEmpty()
@@ -177,11 +183,19 @@ internal fun TvArchiveContent(
         }
         if (playFailed) Text(stringResource(Res.string.tv_guide_replay_play_error),
             Modifier.padding(vertical = 8.dp), color = colors.error)
-        when {
-            loadFailed -> Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(stringResource(Res.string.lisy_tv_archive_error), color = colors.onBackground)
+        if (scanning && available.isNotEmpty()) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp))
+        }
+        if (loadFailed) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(if (available.isEmpty()) Res.string.lisy_tv_archive_error
+                    else Res.string.tv_archive_dates_partial_error), Modifier.weight(1f), color = colors.onSurfaceVariant)
                 TextButton(onClick = onRetry) { Text(stringResource(Res.string.action_retry)) }
             }
+        }
+        when {
+            loadFailed && available.isEmpty() -> Unit
             days?.isEmpty() == true || programs?.isEmpty() == true ->
                 Text(stringResource(Res.string.lisy_tv_no_archive_programmes), Modifier.padding(vertical = 30.dp),
                     color = colors.onSurfaceVariant)

@@ -1,0 +1,21 @@
+<resources>
+    <string name="tv_parental_settings_title">Contrôle parental</string>
+    <string name="tv_parental_settings_description">Protégez les contenus adultes avec un code parental commun à cette application. L’accès se verrouille après 15 minutes, au changement de profil ou de serveur, et au redémarrage.</string>
+    <string name="tv_parental_settings_no_code">Les contenus adultes sont verrouillés. Configurez un code pour autoriser un accès temporaire.</string>
+    <string name="tv_parental_settings_locked">Les contenus adultes sont verrouillés.</string>
+    <string name="tv_parental_settings_unlocked">L’accès adulte est temporairement déverrouillé pour ce profil et ce serveur.</string>
+    <string name="tv_parental_create_code">Configurer le code parental</string>
+    <string name="tv_parental_change_code">Changer le code parental</string>
+    <string name="tv_parental_lock_now">Verrouiller maintenant</string>
+    <string name="tv_parental_code_description">Choisissez un code à 4 chiffres puis confirmez-le. La modification d’un code existant nécessite le code actuel.</string>
+    <string name="tv_parental_current_code">Code actuel</string>
+    <string name="tv_parental_new_code">Nouveau code</string>
+    <string name="tv_parental_confirm_code">Confirmer le nouveau code</string>
+    <string name="tv_parental_invalid_pin">Le code doit contenir exactement 4 chiffres.</string>
+    <string name="tv_parental_confirmation_error">Les nouveaux codes ne correspondent pas.</string>
+    <string name="tv_parental_not_configured">Configurez un code parental dans Paramètres → Services → Lisy avant de déverrouiller les contenus adultes.</string>
+    <string name="tv_parental_storage_error">Le code parental n’a pas pu être vérifié ou enregistré. L’accès reste verrouillé.</string>
+    <string name="tv_parental_context_changed">Le profil ou le serveur a changé. Saisissez de nouveau le code parental.</string>
+    <string name="tv_parental_saved">Code parental enregistré. Les contenus adultes sont verrouillés.</string>
+    <string name="tv_parental_saving">Enregistrement…</string>
+</resources>

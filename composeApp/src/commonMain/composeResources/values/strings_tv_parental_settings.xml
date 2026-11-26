@@ -1,0 +1,21 @@
+<resources>
+    <string name="tv_parental_settings_title">Parental controls</string>
+    <string name="tv_parental_settings_description">Protect adult content with a shared parental code for this app. Access locks again after 15 minutes, when changing profile or server, and after restarting.</string>
+    <string name="tv_parental_settings_no_code">Adult content is locked. Set a code to allow temporary access.</string>
+    <string name="tv_parental_settings_locked">Adult content is locked.</string>
+    <string name="tv_parental_settings_unlocked">Adult access is temporarily unlocked for this profile and server.</string>
+    <string name="tv_parental_create_code">Set parental code</string>
+    <string name="tv_parental_change_code">Change parental code</string>
+    <string name="tv_parental_lock_now">Lock now</string>
+    <string name="tv_parental_code_description">Choose a 4-digit code and confirm it. Changing an existing code requires the current code.</string>
+    <string name="tv_parental_current_code">Current code</string>
+    <string name="tv_parental_new_code">New code</string>
+    <string name="tv_parental_confirm_code">Confirm new code</string>
+    <string name="tv_parental_invalid_pin">The code must contain exactly 4 digits.</string>
+    <string name="tv_parental_confirmation_error">The new codes do not match.</string>
+    <string name="tv_parental_not_configured">Set a parental code in Settings → Services → Lisy before unlocking adult content.</string>
+    <string name="tv_parental_storage_error">The parental code could not be verified or saved. Access remains locked.</string>
+    <string name="tv_parental_context_changed">The profile or server changed. Enter the parental code again.</string>
+    <string name="tv_parental_saved">Parental code saved. Adult content is locked.</string>
+    <string name="tv_parental_saving">Saving…</string>
+</resources>
