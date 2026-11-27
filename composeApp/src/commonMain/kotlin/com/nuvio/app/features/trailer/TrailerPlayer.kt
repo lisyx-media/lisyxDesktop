@@ -72,7 +72,7 @@ internal fun TrailerPlayer(
     }
     EnterImmersivePlayerMode(keepScreenAwake = error == null && state.playWhenReady && !state.snapshot.isEnded)
     val desktopNativeControls = isDesktop && source != null && !isLoading && error == null
-    Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.then(if (compact) Modifier else Modifier.background(Color.Black)), contentAlignment = Alignment.Center) {
         if (source != null && !isLoading && error == null) {
             key(videoSource?.videoUrl) {
                 TrailerPlaybackSurface(
@@ -160,7 +160,7 @@ private fun TrailerPlaybackSurface(
             restoringPosition = false
         }
     }
-    var pendingMute by remember { mutableStateOf(state.initiallyMuted) }
+    var pendingMute by remember { mutableStateOf(state.initiallyMuted && !(isDesktop && compact)) }
     LaunchedEffect(controller, snapshot.isLoading) {
         if (pendingMute && controller != null && !snapshot.isLoading) {
             controller?.setMuted(true)

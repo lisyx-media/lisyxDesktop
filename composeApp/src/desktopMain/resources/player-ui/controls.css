@@ -3803,8 +3803,39 @@ svg {
   box-shadow: inset 3px 0 #e50914;
 }
 
-.compact-trailer-buttons { display: none; }
-.compact-trailer > :not(.compact-trailer-buttons) { display: none !important; }
-.compact-trailer .compact-trailer-buttons { display: flex; position: absolute; inset: 8px 8px 8px auto; flex-direction: column; justify-content: space-between; pointer-events: none; }
-.compact-trailer-buttons button { background: rgba(0,0,0,.74); color: white; border: 0; border-radius: 50%; width: 40px; height: 40px; pointer-events: auto; cursor: pointer; }
-.compact-trailer-buttons svg { width: 20px; height: 20px; fill: currentColor; }
+.compact-trailer-buttons {
+  display: none;
+}
+
+.compact-trailer > :not(.compact-trailer-buttons) {
+  display: none !important;
+}
+
+.compact-trailer .compact-trailer-buttons {
+  display: flex;
+  position: absolute;
+  inset: 8px 8px 8px auto;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.compact-trailer-buttons button {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .74);
+  color: white;
+  pointer-events: auto;
+}
+
+.compact-trailer-buttons svg {
+  position: absolute;
+  inset: 10px;
+  width: 20px;
+  height: 20px;
+}

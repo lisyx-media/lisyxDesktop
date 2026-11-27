@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -128,6 +129,7 @@ private fun NativePlayerSurface(
     onError: (String?) -> Unit,
 ) {
     val platformDensity = LocalNuvioPlatformDensity.current
+    val compactMacTrailer = playerControlsState.compactTrailer && DesktopHostOs.current == DesktopHostOs.MACOS
     val host = remember { NativePlayerHost() }
     val controller = remember(host) { NativePlayerController(host) }
     val hostFirstPaintComplete = remember { mutableStateOf(false) }
@@ -174,7 +176,7 @@ private fun NativePlayerSurface(
         var previousFrame: java.awt.Rectangle? = null
         while (true) {
             val pointer = java.awt.MouseInfo.getPointerInfo()?.location
-            val frame = if (host.isShowing) java.awt.Rectangle(host.locationOnScreen, host.size) else null
+            val frame = host.previewBoundsOnScreen()
             if (frame != previousFrame) {
                 controller.updateControls(latestControlsState.value)
                 previousFrame = frame
@@ -327,10 +329,12 @@ private fun NativePlayerSurface(
     val pipChanges by DesktopPlayerPictureInPicture.changes.collectAsState()
     val isInPip = pipChanges >= 0 && DesktopPlayerPictureInPicture.isEnabled
 
+    val surfaceBackground = if (compactMacTrailer) Color.Transparent else Color.Black
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(surfaceBackground)
+            .onSizeChanged { host.previewPixelSize = it },
         contentAlignment = Alignment.Center,
     ) {
         // SwingPanel keeps the stable AWT host. PiP moves only the native player
@@ -342,6 +346,10 @@ private fun NativePlayerSurface(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .requiredSize(1.dp)
+                } else if (compactMacTrailer) {
+                    // The macOS bridge draws in the window's NSView. Keep the AWT peer
+                    // inside the picture so its rectangular surface cannot cover the corners.
+                    Modifier.align(Alignment.Center).requiredSize(4.dp)
                 } else if (hostFirstPaintComplete.value) {
                     Modifier.fillMaxSize()
                 } else {
@@ -349,7 +357,7 @@ private fun NativePlayerSurface(
                         .align(Alignment.BottomEnd)
                         .requiredSize(1.dp)
                 },
-                background = Color.Black,
+                background = surfaceBackground,
             )
         }
 

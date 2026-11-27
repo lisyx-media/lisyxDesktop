@@ -5,6 +5,9 @@ import java.awt.Color
 import java.awt.Cursor
 import java.awt.Graphics
 import java.awt.Point
+import java.awt.Rectangle
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import java.awt.Toolkit
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -13,6 +16,23 @@ import java.awt.event.MouseMotionAdapter
 import java.awt.image.BufferedImage
 
 internal class NativePlayerHost : Canvas() {
+    var previewPixelSize: IntSize? = null
+
+    fun previewBoundsOnScreen(): Rectangle? {
+        if (!isShowing) return null
+        val origin = locationOnScreen
+        val preview = previewPixelSize ?: return Rectangle(origin, size)
+        val deviceScale = graphicsConfiguration.defaultTransform
+        val previewWidth = (preview.width / deviceScale.scaleX).roundToInt()
+        val previewHeight = (preview.height / deviceScale.scaleY).roundToInt()
+        return Rectangle(
+            origin.x + (width - previewWidth) / 2,
+            origin.y + (height - previewHeight) / 2,
+            previewWidth,
+            previewHeight,
+        )
+    }
+
     var onPeerReady: (() -> Unit)? = null
     var onDisplayableChanged: ((Boolean) -> Unit)? = null
     var onFirstPaint: (() -> Unit)? = null

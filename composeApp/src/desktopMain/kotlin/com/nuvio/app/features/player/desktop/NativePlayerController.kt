@@ -116,6 +116,7 @@ internal class NativePlayerController(
     private var controlsState = PlayerControlsState()
     private var pictureInPictureActive = false
     @Volatile
+    private var hoverTrailer = false
     private var currentVolumeLevel = rememberedVolumeLevel.coerceDesktopPlayerVolumeLevel()
     private var pendingSubtitleDelayMs: Int? = null
     private var pendingSubtitleStyle: SubtitleStyleState? = null
@@ -295,6 +296,8 @@ internal class NativePlayerController(
                 if (!releaseRequested && pendingSource === pending) pending.onError(error.message)
                 return
             }
+        hoverTrailer = controlsState.compactTrailer
+        val startAsPreview = hoverTrailer
         val preview = previewFrame(controlsState)
         val resolvedSource = if (pending.sourceUrl.startsWith("file:", ignoreCase = true)) {
             runCatching { java.io.File(java.net.URI(pending.sourceUrl)).absolutePath }.getOrElse {
@@ -317,7 +320,7 @@ internal class NativePlayerController(
                         hostViewPtr,
                         resolvedSource,
                         pending.headerLines.toTypedArray(),
-                        pending.playWhenReady,
+                        pending.playWhenReady && !startAsPreview,
                         pending.initialPositionMs,
                         NativePlayerBridge.controlsPageUrl + (preview?.let { "#preview=${it.x},${it.y},${it.width},${it.height}" } ?: ""),
                         pending.decoderPriority,
@@ -358,6 +361,7 @@ internal class NativePlayerController(
                                 "initialPositionMs=${pending.initialPositionMs}"
                         }
                         applyRememberedVolume()
+                        if (startAsPreview && pending.playWhenReady) NativePlayerBridge.setPaused(created, false)
                         updateControls(controlsState)
                         setResizeMode(rememberedResizeMode)
                         if (currentNowPlayingTitle.isNotEmpty() || currentArtworkUrl.isNotEmpty()) {
@@ -435,8 +439,8 @@ internal class NativePlayerController(
 
     @Synchronized
     private fun previewFrame(state: PlayerControlsState): java.awt.Rectangle? =
-        if (state.compactTrailer && DesktopHostOs.current == DesktopHostOs.MACOS && host.isShowing)
-            java.awt.Rectangle(host.locationOnScreen, host.size)
+        if (state.compactTrailer && DesktopHostOs.current == DesktopHostOs.MACOS)
+            host.previewBoundsOnScreen()
         else null
 
     fun updateControls(state: PlayerControlsState) {
@@ -590,7 +594,10 @@ internal class NativePlayerController(
             }
             "dragWindow" -> NativePlayerBridge.beginWindowDrag(handle)
             "volumeChange" -> setFallbackVolume(value.toFloat())
-            "volumeChangeTemporary" -> setTemporaryVolume(value.toFloat())
+            "volumeChangeTemporary" -> {
+                setTemporaryVolume(value.toFloat())
+                if (hoverTrailer) com.nuvio.app.core.ui.PosterCardStyleRepository.setHoverPreviewTrailerSoundEnabled(value > 0)
+            }
             "setPlaybackSpeed" -> {
                 if (onEvent(type, value)) return
                 setPlaybackSpeed(value.toFloat())
@@ -694,7 +701,11 @@ internal class NativePlayerController(
     private fun applyRememberedVolume() {
         val current = handle
         if (current == 0L) return
-        val level = rememberedVolumeLevel.coerceDesktopPlayerVolumeLevel()
+        val level = when {
+            !hoverTrailer -> rememberedVolumeLevel
+            !com.nuvio.app.core.ui.PosterCardStyleRepository.uiState.value.hoverPreviewTrailerSoundEnabled -> 0f
+            else -> rememberedVolumeLevel.takeIf { it > 0f } ?: 1f
+        }.coerceDesktopPlayerVolumeLevel()
         currentVolumeLevel = level
         NativePlayerBridge.setVolume(current, level)
         controlsState = controlsState.copy(volumeLevel = level)

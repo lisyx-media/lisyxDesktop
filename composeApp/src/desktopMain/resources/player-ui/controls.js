@@ -619,7 +619,9 @@ const syncVolumeControl = () => {
     const btnLabel = percent === 0 ? "Unmute" : "Mute";
     volumeButton.setAttribute("aria-label", btnLabel);
     document.getElementById("previewVolume").setAttribute("aria-label", btnLabel);
-    document.getElementById("previewVolumeIcon").setAttribute("href", volumeIcon.getAttribute("href"));
+    const previewVolumeIcon = document.getElementById("previewVolumeIcon");
+    previewVolumeIcon.setAttribute("href", volumeIcon.getAttribute("href"));
+    previewVolumeIcon.ownerSVGElement.setAttribute("viewBox", percent === 0 ? "1.5 0 24 24" : "1 0 24 24");
     volumeButton.setAttribute("title", btnLabel);
   }
 };

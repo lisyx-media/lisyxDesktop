@@ -922,6 +922,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 @implementation MpvWebPlayer {
     NSView *_hostView;
     NSRect _previewScreenFrame;
+    NSView *_previewContainer;
     PlayerMetalView *_videoView;
     WKWebView *_webView;
     PlayerScriptHandler *_scriptHandler;
@@ -1046,12 +1047,23 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     }
     _hostView = hostView;
     _hostView.wantsLayer = YES;
-    _hostView.layer.backgroundColor = NSColor.blackColor.CGColor;
+    if (NSIsEmptyRect(_previewScreenFrame)) _hostView.layer.backgroundColor = NSColor.blackColor.CGColor;
     [_hostView setPostsFrameChangedNotifications:YES];
     [_hostView setPostsBoundsChangedNotifications:YES];
 
-    _videoView = [[PlayerMetalView alloc] initWithFrame:[self playbackFrame]];
-    [_hostView addSubview:_videoView];
+    if (!NSIsEmptyRect(_previewScreenFrame)) {
+        _previewContainer = [[NSView alloc] initWithFrame:[self playbackFrame]];
+        _previewContainer.wantsLayer = YES;
+        _previewContainer.layer.masksToBounds = YES;
+        _previewContainer.layer.backgroundColor = NSColor.blackColor.CGColor;
+        // Match the hover card's 16 pt radius. The lower edge joins the card's text.
+        _previewContainer.layer.maskedCorners = kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
+        _previewContainer.layer.cornerRadius = 16.0;
+        [_hostView addSubview:_previewContainer];
+    }
+    NSView *surface = _previewContainer ?: _hostView;
+    _videoView = [[PlayerMetalView alloc] initWithFrame:surface.bounds];
+    [surface addSubview:_videoView];
 
     _scriptHandler = [PlayerScriptHandler new];
     _scriptHandler.player = self;
@@ -1060,11 +1072,11 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 
     WKWebViewConfiguration *configuration = [WKWebViewConfiguration new];
     configuration.userContentController = contentController;
-    _webView = [[PlayerControlsWebView alloc] initWithFrame:[self playbackFrame] configuration:configuration];
+    _webView = [[PlayerControlsWebView alloc] initWithFrame:surface.bounds configuration:configuration];
     _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     _webView.wantsLayer = YES;
     [_webView setValue:@NO forKey:@"drawsBackground"];
-    [_hostView addSubview:_webView positioned:NSWindowAbove relativeTo:_videoView];
+    [surface addSubview:_webView positioned:NSWindowAbove relativeTo:_videoView];
     NSURL *controlsURL = [NSURL URLWithString:controlsUrl ?: @""];
     if (!controlsURL) {
         @throw [NSException exceptionWithName:@"PlayerBridgeError"
@@ -1177,15 +1189,23 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                       name:NSViewBoundsDidChangeNotification
                                                     object:oldHostView];
-    [_videoView removeFromSuperview];
-    [_webView removeFromSuperview];
+    if (_previewContainer) {
+        [_previewContainer removeFromSuperview];
+    } else {
+        [_videoView removeFromSuperview];
+        [_webView removeFromSuperview];
+    }
     _hostView = newHostView;
     _hostView.wantsLayer = YES;
     _hostView.layer.backgroundColor = NSColor.blackColor.CGColor;
     [_hostView setPostsFrameChangedNotifications:YES];
     [_hostView setPostsBoundsChangedNotifications:YES];
-    [_hostView addSubview:_videoView];
-    [_hostView addSubview:_webView positioned:NSWindowAbove relativeTo:_videoView];
+    if (_previewContainer) {
+        [_hostView addSubview:_previewContainer];
+    } else {
+        [_hostView addSubview:_videoView];
+        [_hostView addSubview:_webView positioned:NSWindowAbove relativeTo:_videoView];
+    }
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(hostViewFrameDidChange:)
                                                  name:NSViewFrameDidChangeNotification
@@ -1439,6 +1459,11 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    if (_previewContainer) {
+        _previewContainer.frame = bounds;
+        _previewContainer.layer.cornerRadius = NSIsEmptyRect(_previewScreenFrame) ? 0.0 : 16.0;
+        bounds = _previewContainer.bounds;
+    }
     if (_videoView) {
         if (liveResize || settlingFromResize) {
             [_videoView setFullscreenTransitionActive:YES];
@@ -1583,7 +1608,7 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
         return;
     }
     _lightweightResizeSettleUntil = 0.0;
-    [self layoutControlsWebViewToBounds:[self playbackFrame] immediate:YES];
+    [self layoutControlsWebViewToBounds:(_previewContainer ?: _hostView).bounds immediate:YES];
     [_videoView setFullscreenTransitionActive:NO];
     [_videoView updateMetalLayerLayout];
     NSString *reason = [NSString stringWithFormat:@"resize-settled/%@", timer.userInfo ?: @"unknown"];
@@ -1638,6 +1663,11 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     setMpvOptionString(_mpv, "hdr-compute-peak", "no");
     setMpvOptionString(_mpv, "dither-depth", "auto");
     setMpvOptionString(_mpv, "demuxer-max-bytes", "150MiB");
+    if (!NSIsEmptyRect(_previewScreenFrame)) {
+        setMpvOptionString(_mpv, "cache", "yes");
+        setMpvOptionString(_mpv, "cache-pause-initial", "yes");
+        setMpvOptionString(_mpv, "cache-pause-wait", "0.5");
+    }
     setMpvOptionString(
         _mpv,
         "stream-lavf-o",
@@ -2022,6 +2052,8 @@ static void setMpvOptionString(mpv_handle *mpv, const char *name, const char *va
     [_webView.configuration.userContentController removeScriptMessageHandlerForName:@"player"];
     [_webView removeFromSuperview];
     [_videoView removeFromSuperview];
+    [_previewContainer removeFromSuperview];
+    _previewContainer = nil;
     _webView = nil;
     _videoView = nil;
     _scriptHandler = nil;
